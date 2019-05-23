@@ -75,3 +75,7 @@ java_test(
         "//src/test/java/com/google/devtools/build/lib/blackbox/framework",
     ],
 )
+
+test_suite(
+    name = "ninja_tests",
+)

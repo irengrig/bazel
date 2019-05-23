@@ -24,7 +24,8 @@ public class NinjaFileHeaderBulkFunctionTest {
         "cflags = -Weverything",
         "",
         "rule compile",
-        "  command = $cc $cflags -c $in -o $out",
+        "  command = $cc $cflags -c $in -o$", // escaping the newline
+        " $out",
         "",
         "rule link",
         "  command = $cc $in -o $out",

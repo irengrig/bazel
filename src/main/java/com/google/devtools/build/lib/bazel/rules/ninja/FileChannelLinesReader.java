@@ -1,5 +1,8 @@
 package com.google.devtools.build.lib.bazel.rules.ninja;
 
+import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.ImmutableSortedMap;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
@@ -24,15 +27,17 @@ class FileChannelLinesReader {
 
   @Nullable
   public String readLine() throws IOException {
-    String line = "";
-    while (!line.endsWith("\n") && !atEOF) {
+    System.out.println("%%%%");
+    Line line = new Line();
+    while (!line.isEol() && !atEOF) {
       readNextChunkIfNeeded();
-      line = readLineFromBuffer();
+      readLineFromBuffer(line);
     }
-    if (atEOF && line.isEmpty()) {
+    String text = line.getLine();
+    if (atEOF && text.isEmpty()) {
       return null;
     }
-    return line.endsWith("\n") ? line.substring(0, line.length() - 1) : line;
+    return text;
   }
 
   private void readNextChunkIfNeeded() throws IOException {
@@ -49,7 +54,7 @@ class FileChannelLinesReader {
     }
   }
 
-  private String readLineFromBuffer() {
+  private void readLineFromBuffer(Line line) {
     lineStart = buffer.position();
     while (buffer.hasRemaining()) {
       char ch = buffer.get();
@@ -62,7 +67,7 @@ class FileChannelLinesReader {
     buffer.position(lineStart);
     buffer.get(chars);
     buffer.position(end);
-    return String.valueOf(chars);
+    line.append(chars);
   }
 
   public boolean isEOF() {
@@ -75,5 +80,64 @@ class FileChannelLinesReader {
 
   public long getBufferStart() {
     return bufferStart;
+  }
+
+  // todo separate test
+  private static class Line {
+    private ImmutableSet<Character> ESCAPED = ImmutableSet.of(' ', '$', ':');
+    private final static ImmutableSortedMap<String, String> ESCAPE_REPLACEMENTS =
+        ImmutableSortedMap.of("$\n", "",
+            "$$", "$",
+            "$ ", " ",
+            "$:", ":");
+    // Still ambiguous situations are possible, like $$:, but ignore that for now.
+    // At least this way we protect $$ to not be used with a space after it.
+    private final static String[] ESCAPE_ORDER = {"$\n", "$:", "$ ", "$$"};
+    private final StringBuilder sb = new StringBuilder();
+    private boolean eol;
+    private boolean firstDollar = false;
+
+    private void append(char[] chars) {
+      if (chars.length == 0) {
+        return;
+      }
+      StringBuilder line = new StringBuilder();
+      if (firstDollar) {
+        line.append('$');
+      }
+      line.append(chars);
+      firstDollar = false;
+      if (line.charAt(line.length() - 1) == '$'
+          && (line.length() < 2 || line.charAt(line.length() - 2) != '$')) {
+        firstDollar = true;
+        line.setLength(line.length() - 1);
+      }
+
+      for (String escapeKey : ESCAPE_ORDER) {
+        replaceAll(line, escapeKey, Preconditions.checkNotNull(ESCAPE_REPLACEMENTS.get(escapeKey)));
+      }
+
+      if (line.length() > 0 && line.charAt(line.length() - 1) == '\n') {
+        eol = true;
+        line.setLength(line.length() - 1);
+      }
+      sb.append(line);
+    }
+
+    private void replaceAll(StringBuilder s, String from, String to) {
+      int idx = 0;
+      while ((idx = s.indexOf(from, idx)) >= 0) {
+        s.replace(idx, idx + from.length(), to);
+        idx += to.length();
+      }
+    }
+
+    private String getLine() {
+      return sb.toString();
+    }
+
+    private boolean isEol() {
+      return eol;
+    }
   }
 }
