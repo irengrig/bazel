@@ -11,7 +11,7 @@ java_library(
     name = "framework",
     testonly = 1,
     srcs = glob(["*.java"]),
-    visibility = ["//src/test/java/com/google/devtools/build/lib/blackbox:__subpackages__"],
+    visibility = ["//src/test/java/com/google/devtools/build/lib:__subpackages__"],
     deps = [":deps"],
 )
 
