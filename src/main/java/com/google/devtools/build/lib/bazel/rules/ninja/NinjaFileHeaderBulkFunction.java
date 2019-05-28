@@ -30,7 +30,7 @@ public class NinjaFileHeaderBulkFunction implements SkyFunction {
   }
 
   public static SkyValue compute(RootedPath ninjaFilePath)
-      throws NinjaFileHeaderBulkFunctionException {
+      throws NinjaFileFormatSkyFunctionException {
     LinesConsumer variables = new LinesConsumer(line -> !line.startsWith("rule ")
       && !line.startsWith("build ") && !line.startsWith("default"));
     LinesConsumer rules = new LinesConsumer(line -> line.startsWith("rule ")
@@ -39,8 +39,7 @@ public class NinjaFileHeaderBulkFunction implements SkyFunction {
     try {
       position = readHeaderParts(ninjaFilePath.asPath().getPathFile(), variables, rules);
     } catch (IOException e) {
-      // todo better exception
-      throw new NinjaFileHeaderBulkFunctionException(e, Transience.PERSISTENT);
+      throw new NinjaFileFormatSkyFunctionException(e);
     }
 
     return new NinjaFileHeaderBulkValue(variables.getLines(), rules.getLines(), position);
@@ -74,17 +73,6 @@ public class NinjaFileHeaderBulkFunction implements SkyFunction {
   @Override
   public String extractTag(SkyKey skyKey) {
     return null;
-  }
-
-  private static class NinjaFileHeaderBulkFunctionException extends SkyFunctionException {
-    public NinjaFileHeaderBulkFunctionException(Exception cause,
-        Transience transience) {
-      super(cause, transience);
-    }
-
-    public NinjaFileHeaderBulkFunctionException(Exception cause, SkyKey childKey) {
-      super(cause, childKey);
-    }
   }
 
   private static class LinesConsumer {

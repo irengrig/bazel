@@ -1,0 +1,190 @@
+package com.google.devtools.build.lib.bazel.rules.ninja;
+
+import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Preconditions;
+import com.google.common.collect.Lists;
+import com.google.devtools.build.lib.vfs.RootedPath;
+import com.google.devtools.build.skyframe.SkyFunction;
+import com.google.devtools.build.skyframe.SkyFunctionException;
+import com.google.devtools.build.skyframe.SkyKey;
+import com.google.devtools.build.skyframe.SkyValue;
+import java.io.IOException;
+import java.nio.channels.FileChannel;
+import java.nio.file.StandardOpenOption;
+import java.util.List;
+import javax.annotation.Nullable;
+
+public class NinjaTargetsFunction implements SkyFunction {
+  private final static int CHUNK_SIZE = 100 * 1024;
+
+  @Nullable
+  @Override
+  public SkyValue compute(SkyKey skyKey, Environment env)
+      throws SkyFunctionException, InterruptedException {
+    NinjaTargetsValue.Key actionsValueKey = (NinjaTargetsValue.Key) skyKey;
+    RootedPath rootedPath = actionsValueKey.getPath();
+
+    NinjaTargetsValue.Builder builder = NinjaTargetsValue.builder();
+    parseFileFragmentForNinjaTargets(actionsValueKey, rootedPath, builder);
+    return builder.build();
+  }
+
+  @VisibleForTesting
+  public static void parseFileFragmentForNinjaTargets(NinjaTargetsValue.Key actionsValueKey,
+      RootedPath rootedPath, NinjaTargetsValue.Builder builder)
+      throws NinjaFileFormatSkyFunctionException {
+    try (FileChannel fch = FileChannel.open(rootedPath.asPath().getPathFile().toPath(),
+        StandardOpenOption.READ)) {
+      FileChannelLinesReader reader = new FileChannelLinesReader(fch);
+      long bufferStart = actionsValueKey.getBufferStart();
+      reader.position(bufferStart, actionsValueKey.getLineStart());
+      List<String> list = Lists.newArrayList();
+
+      while (true) {
+        String line = reader.readLine();
+        if (line == null || line.isEmpty()) {
+          parseExpression(list, builder);
+        } else if (line.startsWith("default ")) {
+          // "default" expression is not quarded by additional line after it.
+          if (!list.isEmpty()) {
+            parseExpression(list, builder);
+          }
+          list.add(line);
+          parseExpression(list, builder);
+        } else {
+          list.add(line);
+        }
+        if (list.isEmpty()
+            && (line == null || reader.getCurrentEnd() >= (bufferStart + CHUNK_SIZE))) {
+          break;
+        }
+      }
+    } catch (IOException e) {
+      throw new NinjaFileFormatSkyFunctionException(e);
+    }
+  }
+
+  @VisibleForTesting
+  public static void parseExpression(List<String> lines, NinjaTargetsValue.Builder builder)
+      throws NinjaFileFormatSkyFunctionException {
+    Preconditions.checkArgument(lines.size() > 0);
+    String header = lines.get(0);
+    if (header.startsWith("default ")) {
+      Preconditions.checkArgument(lines.size() == 1);
+      String[] words = header.split(" ");
+      // Skip first "default" word.
+      for (int i = 1; i < words.length; i++) {
+        builder.addDefault(words[i]);
+      }
+    } else if (header.startsWith("build ")) {
+      NinjaTarget.Builder tBuilder = NinjaTarget.builder();
+      String buildText = header.substring("build ".length());
+
+      TokenProcessor addToInputs = string -> tBuilder.addInputs(string.split(" "));
+      TokenProcessor addToImplicitInputs =
+          string -> tBuilder.addImplicitInputs(string.split(" "));
+      TokenProcessor addToOrderOnlyInputs =
+          string -> tBuilder.addOrderOnlyInputs(string.split(" "));
+
+      TokenProcessor addToOutputs = string -> tBuilder.addOutputs(string.split(" "));
+      TokenProcessor addToImplicitOutputs =
+          string -> tBuilder.addImplicitOutputs(string.split(" "));
+
+      new Splitter(":", true)
+          .head(new Splitter("|")
+              .head(addToOutputs)
+              .tail(addToImplicitOutputs))
+          .tail(new Splitter("||")
+              .head(new Splitter("|")
+                  .head(new Splitter(" ")
+                      .head(tBuilder::setCommand)
+                      .tail(addToInputs)
+                  )
+                  .tail(addToImplicitInputs)
+              )
+              .tail(addToOrderOnlyInputs)
+          ).accept(buildText);
+
+      NinjaTarget target = tBuilder.build();
+      String command = target.getCommand();
+      if (command == null) {
+        throw new NinjaFileFormatSkyFunctionException("Ninja target is missing command: " + header);
+      }
+      if ("phony".equals(command)) {
+        if (!target.getImplicitOutputs().isEmpty() || target.getOutputs().size() != 1) {
+          throw new NinjaFileFormatSkyFunctionException("Wrong phony target format: " + header);
+        }
+        builder.addAlias(target.getOutputs().get(0), target);
+      } else {
+        builder.addNinjaTarget(target);
+      }
+    } else {
+      throw new NinjaFileFormatSkyFunctionException(
+          String.format("Unexpected line start for build targets section: '%s'", header));
+    }
+    lines.clear();
+  }
+
+  @VisibleForTesting
+  public interface TokenProcessor {
+    void accept(String text) throws NinjaFileFormatSkyFunctionException;
+  }
+
+  @VisibleForTesting
+  public static class Splitter implements TokenProcessor {
+    private static final TokenProcessor SHOULD_NOT_BE_CALLED =
+        t -> {throw new IllegalStateException(t);};
+    private final String token;
+    private final boolean mustSplit;
+    private TokenProcessor headSplitter = SHOULD_NOT_BE_CALLED;
+    private TokenProcessor tailSplitter = SHOULD_NOT_BE_CALLED;
+
+    public Splitter(String token) {
+      this(token, false);
+    }
+
+    public Splitter(String token, boolean mustSplit) {
+      this.token = token;
+      this.mustSplit = mustSplit;
+    }
+
+    public Splitter head(TokenProcessor headSplitter) {
+      this.headSplitter = headSplitter;
+      return this;
+    }
+
+    public Splitter tail(TokenProcessor tailSplitter) {
+      this.tailSplitter = tailSplitter;
+      return this;
+    }
+
+    @Override
+    public void accept(String text) throws NinjaFileFormatSkyFunctionException {
+      if (text.isEmpty()) {
+        return;
+      }
+      int idx = text.indexOf(token);
+      if (idx < 0) {
+        if (mustSplit) {
+          throw new NinjaFileFormatSkyFunctionException("Wrong target line format: " + text);
+        }
+        headSplitter.accept(text.trim());
+      } else {
+        String head = text.substring(0, idx).trim();
+        if (!head.isEmpty()) {
+          headSplitter.accept(head);
+        }
+        String tail = text.substring(idx + 1).trim();
+        if (!tail.isEmpty()) {
+          tailSplitter.accept(tail);
+        }
+      }
+    }
+  }
+
+  @Nullable
+  @Override
+  public String extractTag(SkyKey skyKey) {
+    return null;
+  }
+}

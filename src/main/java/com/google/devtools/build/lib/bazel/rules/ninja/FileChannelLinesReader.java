@@ -16,6 +16,7 @@ class FileChannelLinesReader {
   private boolean atEOF;
   private int lineStart = 0;
   private long bufferStart = 0;
+  private long currentEnd = 0;
 
   FileChannelLinesReader(FileChannel fch) {
     this.fch = fch;
@@ -24,7 +25,6 @@ class FileChannelLinesReader {
 
   @Nullable
   public String readLine() throws IOException {
-    System.out.println("%%%%");
     NinjaFileLine line = new NinjaFileLine();
     while (!line.isEol() && !atEOF) {
       readNextChunkIfNeeded();
@@ -44,6 +44,7 @@ class FileChannelLinesReader {
     if (buffer == null || buffer.position() >= buffer.limit()) {
       bufferStart = fch.position();
       int bytesRead = fch.read(byteBuffer);
+      currentEnd = fch.position() + byteBuffer.limit();
       byteBuffer.position(0);
       byteBuffer.limit(bytesRead > 0 ? bytesRead : 0);
       atEOF = bytesRead <= 0;
@@ -79,4 +80,13 @@ class FileChannelLinesReader {
     return bufferStart;
   }
 
+  public void position(long bufferStart, int lineStart) throws IOException {
+    fch.position(bufferStart);
+    readNextChunkIfNeeded();
+    buffer.position(lineStart);
+  }
+
+  public long getCurrentEnd() {
+    return currentEnd;
+  }
 }

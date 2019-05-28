@@ -29,7 +29,7 @@ public class NinjaVariablesFunction implements SkyFunction {
 
   @VisibleForTesting
   public static NinjaVariablesValue compute(List<String> lines)
-      throws NinjaWrongVariablesFormatException {
+      throws NinjaFileFormatSkyFunctionException {
     ImmutableSortedMap.Builder<String, String> builder = ImmutableSortedMap.naturalOrder();
     List<String> problematic = Lists.newArrayList();
     lines.forEach(line -> {
@@ -45,7 +45,7 @@ public class NinjaVariablesFunction implements SkyFunction {
       }
     });
     if (!problematic.isEmpty()) {
-      throw new NinjaWrongVariablesFormatException(
+      throw new NinjaFileFormatSkyFunctionException(
           String.format("Some of the lines do not contain variable definitions: [%s]",
               String.join(",\n", problematic)));
     }
@@ -56,11 +56,5 @@ public class NinjaVariablesFunction implements SkyFunction {
   @Override
   public String extractTag(SkyKey skyKey) {
     return null;
-  }
-
-  public static class NinjaWrongVariablesFormatException extends SkyFunctionException {
-    public NinjaWrongVariablesFormatException(String message) {
-      super(new Exception(message), Transience.PERSISTENT);
-    }
   }
 }
