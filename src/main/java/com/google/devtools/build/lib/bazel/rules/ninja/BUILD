@@ -1,15 +1,25 @@
 java_library(
     name = "ninja_build",
     srcs = glob(["*.java"]),
+    visibility = [
+        "//src/main/java/com/google/devtools/build/lib:__pkg__",
+        "//src/test/java/com/google/devtools/build/lib/bazel/rules/ninja:__pkg__",
+        "//src/test/java/com/google/devtools/build/lib/blackbox/tests:__pkg__",
+    ],
     deps = [
-        "//third_party:guava",
-        "//third_party:jsr305",
+        "//src/main/java/com/google/devtools/build/lib:build-base",
+        "//src/main/java/com/google/devtools/build/lib:packages-internal",
+        "//src/main/java/com/google/devtools/build/lib:runtime",
+        "//src/main/java/com/google/devtools/build/lib:util",
+        "//src/main/java/com/google/devtools/build/lib/actions",
+        "//src/main/java/com/google/devtools/build/lib/collect/nestedset",
         "//src/main/java/com/google/devtools/build/lib/concurrent",
+        "//src/main/java/com/google/devtools/build/lib/rules/genrule",
+        "//src/main/java/com/google/devtools/build/lib/skyframe/serialization/autocodec:autocodec-annotation",
         "//src/main/java/com/google/devtools/build/lib/vfs",
         "//src/main/java/com/google/devtools/build/skyframe",
         "//src/main/java/com/google/devtools/build/skyframe:skyframe-objects",
-        "//src/main/java/com/google/devtools/build/lib:util",
-        "//src/main/java/com/google/devtools/build/lib/skyframe/serialization/autocodec:autocodec-annotation",
+        "//third_party:guava",
+        "//third_party:jsr305",
     ],
-    visibility = ["//src/test/java/com/google/devtools/build/lib/bazel/rules/ninja:__pkg__"]
 )

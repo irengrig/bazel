@@ -3,6 +3,7 @@ package com.google.devtools.build.lib.bazel.rules.ninja;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSortedMap;
+import java.util.Objects;
 
 public class NinjaTarget {
   private final String command;
@@ -56,6 +57,44 @@ public class NinjaTarget {
 
   public ImmutableSortedMap<String, String> getVariables() {
     return variables;
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) {
+      return true;
+    }
+    if (o == null || getClass() != o.getClass()) {
+      return false;
+    }
+    NinjaTarget that = (NinjaTarget) o;
+    return command.equals(that.command) &&
+        inputs.equals(that.inputs) &&
+        implicitInputs.equals(that.implicitInputs) &&
+        orderOnlyInputs.equals(that.orderOnlyInputs) &&
+        outputs.equals(that.outputs) &&
+        implicitOutputs.equals(that.implicitOutputs) &&
+        variables.equals(that.variables);
+  }
+
+  @Override
+  public String toString() {
+    return "NinjaTarget{" +
+        "command='" + command + '\'' +
+        ", inputs=" + inputs +
+        ", implicitInputs=" + implicitInputs +
+        ", orderOnlyInputs=" + orderOnlyInputs +
+        ", outputs=" + outputs +
+        ", implicitOutputs=" + implicitOutputs +
+        ", variables=" + variables +
+        '}';
+  }
+
+  @Override
+  public int hashCode() {
+    return Objects
+        .hash(command, inputs, implicitInputs, orderOnlyInputs, outputs, implicitOutputs,
+            variables);
   }
 
   public static Builder builder() {

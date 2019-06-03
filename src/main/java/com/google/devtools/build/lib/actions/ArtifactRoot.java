@@ -80,6 +80,14 @@ public final class ArtifactRoot implements Comparable<ArtifactRoot>, Serializabl
     return INTERNER.intern(new ArtifactRoot(Root.fromPath(root), execPath, RootType.Middleman));
   }
 
+  // todo this is added for fast prototyping only
+  public static ArtifactRoot underWorkspaceMiddlemanRoot(
+      Path workspaceRoot,
+      PathFragment relativeDirectory) {
+    return INTERNER.intern(new ArtifactRoot(Root.fromPath(workspaceRoot),
+        relativeDirectory, RootType.Middleman));
+  }
+
   @AutoCodec.VisibleForSerialization
   @AutoCodec.Instantiator
   static ArtifactRoot createForSerialization(Root root, PathFragment execPath, RootType rootType) {

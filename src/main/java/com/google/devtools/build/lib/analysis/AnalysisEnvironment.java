@@ -29,6 +29,7 @@ import com.google.devtools.build.lib.analysis.config.BuildConfiguration;
 import com.google.devtools.build.lib.events.ExtendedEventHandler;
 import com.google.devtools.build.lib.syntax.StarlarkSemantics;
 import com.google.devtools.build.lib.vfs.PathFragment;
+import com.google.devtools.build.lib.vfs.Root;
 import com.google.devtools.build.skyframe.SkyFunction;
 
 /**
@@ -49,6 +50,8 @@ public interface AnalysisEnvironment extends ActionRegistry {
    */
   boolean hasErrors();
 
+  Artifact getSourceArtifact(PathFragment rootRelativePath, Root root);
+
   /**
    * Returns the artifact for the derived file {@code rootRelativePath}.
    *
@@ -65,6 +68,8 @@ public interface AnalysisEnvironment extends ActionRegistry {
    * method on {@link RuleContext} mentioned above.
    */
   Artifact getDerivedArtifact(PathFragment rootRelativePath, ArtifactRoot root);
+
+  Artifact getDerivedArtifactSomewhere(PathFragment rootRelativePath, ArtifactRoot root);
 
   /**
    * Returns an artifact for the derived file {@code rootRelativePath} whose changes do not cause a

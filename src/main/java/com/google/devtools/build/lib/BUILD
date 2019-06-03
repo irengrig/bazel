@@ -838,6 +838,7 @@ java_library(
         ":bazel/BazelRepositoryModule",
         ":build-base",
         "//src/main/java/com/google/devtools/build/lib/bazel/debug:workspace-rule-module",
+        "//src/main/java/com/google/devtools/build/lib/bazel/rules/ninja:ninja_build",
         "//src/main/java/com/google/devtools/build/lib/buildeventservice",
         "//src/main/java/com/google/devtools/build/lib/dynamic",
         "//src/main/java/com/google/devtools/build/lib/metrics:metrics_module",

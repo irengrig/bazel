@@ -231,6 +231,17 @@ public class ArtifactFactory implements ArtifactResolver {
     return getArtifact(root, root.getExecPath().getRelative(rootRelativePath), owner, null);
   }
 
+  public Artifact getDerivedArtifactSomewhere(
+      PathFragment rootRelativePath, ArtifactRoot root, ArtifactOwner owner) {
+    // Weakened checks.
+    Preconditions.checkArgument(!root.isSourceRoot());
+    Preconditions.checkArgument(
+        rootRelativePath.isAbsolute() == root.getRoot().isAbsolute(), rootRelativePath);
+    Preconditions.checkArgument(!rootRelativePath.containsUplevelReferences(), rootRelativePath);
+
+    return getArtifact(root, root.getExecPath().getRelative(rootRelativePath), owner, null);
+  }
+
   /**
    * Returns an artifact that represents the output directory of a Fileset at the given
    * root-relative path under the given root, creating it if not found. This method only works for

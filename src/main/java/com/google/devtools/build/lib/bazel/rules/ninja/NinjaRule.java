@@ -38,12 +38,24 @@ public class NinjaRule {
     msvc_deps_prefix,
     description,
     generator,
-    in,
-    in_newline,
-    out,
     restat,
     rspfile,
-    rspfile_content;
+    rspfile_content,
+
+    // These variables are provided by the target.
+    in,
+    in_newline,
+    out;
+
+    private final boolean definedByTarget;
+
+    ParameterName() {
+      definedByTarget = false;
+    }
+
+    ParameterName(boolean definedByTarget) {
+      this.definedByTarget = definedByTarget;
+    }
 
     public static ParameterName nullOrValue(String name) {
       try {
@@ -51,6 +63,10 @@ public class NinjaRule {
       } catch (IllegalArgumentException e) {
         return null;
       }
+    }
+
+    public boolean isDefinedByTarget() {
+      return definedByTarget;
     }
   }
 }

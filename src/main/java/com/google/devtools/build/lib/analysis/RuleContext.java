@@ -726,6 +726,14 @@ public final class RuleContext extends TargetContext
   }
 
   @Override
+  public Artifact getDerivedArtifactSomewhere(PathFragment rootRelativePath, ArtifactRoot root) {
+    Preconditions.checkState(rootRelativePath.startsWith(getPackageDirectory()),
+        "Output artifact '%s' not under package directory '%s' for target '%s'",
+        rootRelativePath, getPackageDirectory(), getLabel());
+    return getAnalysisEnvironment().getDerivedArtifactSomewhere(rootRelativePath, root);
+  }
+
+  @Override
   public SpecialArtifact getTreeArtifact(PathFragment rootRelativePath, ArtifactRoot root) {
     Preconditions.checkState(rootRelativePath.startsWith(getPackageDirectory()),
         "Output artifact '%s' not under package directory '%s' for target '%s'",

@@ -5,10 +5,7 @@ import com.google.common.collect.ImmutableSortedMap;
 
 public class NinjaFileLine {
   private final static ImmutableSortedMap<String, String> ESCAPE_REPLACEMENTS =
-      ImmutableSortedMap.of("$\n", "",
-          "$$", "$",
-          "$ ", " ",
-          "$:", ":");
+      ImmutableSortedMap.of("$\n", "");
   // Still ambiguous situations are possible, like $$:, but ignore that for now.
   // At least this way we protect $$ to not be used with a space after it.
   private final static String[] ESCAPE_ORDER = {"$\n", "$:", "$ ", "$$"};
@@ -32,9 +29,10 @@ public class NinjaFileLine {
       line.setLength(line.length() - 1);
     }
 
-    for (String escapeKey : ESCAPE_ORDER) {
-      replaceAll(line, escapeKey, Preconditions.checkNotNull(ESCAPE_REPLACEMENTS.get(escapeKey)));
-    }
+    replaceAll(line, "$\n", "");
+    // for (String escapeKey : ESCAPE_ORDER) {
+    //   replaceAll(line, escapeKey, Preconditions.checkNotNull(ESCAPE_REPLACEMENTS.get(escapeKey)));
+    // }
 
     if (line.length() > 0 && line.charAt(line.length() - 1) == '\n') {
       eol = true;

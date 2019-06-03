@@ -65,6 +65,8 @@ public interface ActionConstructionContext {
    */
   Artifact getDerivedArtifact(PathFragment rootRelativePath, ArtifactRoot root);
 
+  Artifact getDerivedArtifactSomewhere(PathFragment rootRelativePath, ArtifactRoot root);
+
   /**
    * Creates a TreeArtifact under a given root with the given root-relative path.
    *

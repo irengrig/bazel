@@ -55,6 +55,10 @@ public class NinjaRulesFunction implements SkyFunction {
             throw new NinjaFileFormatSkyFunctionException(
                 String.format("Unknown rule parameter: '%s' in rule '%s'", key, name));
           }
+          if (parameterName.isDefinedByTarget()) {
+            throw new NinjaFileFormatSkyFunctionException(
+                String.format("Parameter '%s' should not be defined in rule '%s'", key, name));
+          }
           parametersBuilder.put(parameterName, value);
         } else {
           throw new NinjaFileFormatSkyFunctionException(

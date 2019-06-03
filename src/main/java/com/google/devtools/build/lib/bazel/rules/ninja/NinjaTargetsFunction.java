@@ -2,6 +2,7 @@ package com.google.devtools.build.lib.bazel.rules.ninja;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableSortedMap;
 import com.google.common.collect.Lists;
 import com.google.devtools.build.lib.vfs.RootedPath;
 import com.google.devtools.build.skyframe.SkyFunction;
@@ -30,9 +31,12 @@ public class NinjaTargetsFunction implements SkyFunction {
   }
 
   @VisibleForTesting
-  public static void parseFileFragmentForNinjaTargets(NinjaTargetsValue.Key actionsValueKey,
-      RootedPath rootedPath, NinjaTargetsValue.Builder builder)
-      throws NinjaFileFormatSkyFunctionException {
+  public static void parseFileFragmentForNinjaTargets(
+      NinjaTargetsValue.Key actionsValueKey,
+      RootedPath rootedPath,
+      NinjaTargetsValue.Builder builder) throws NinjaFileFormatSkyFunctionException {
+
+    boolean skippingStart = true;
     try (FileChannel fch = FileChannel.open(rootedPath.asPath().getPathFile().toPath(),
         StandardOpenOption.READ)) {
       FileChannelLinesReader reader = new FileChannelLinesReader(fch);
@@ -41,22 +45,29 @@ public class NinjaTargetsFunction implements SkyFunction {
       List<String> list = Lists.newArrayList();
 
       while (true) {
+        long lineStart = reader.getCurrentEnd();
         String line = reader.readLine();
-        if (line == null || line.isEmpty()) {
-          parseExpression(list, builder);
-        } else if (line.startsWith("default ")) {
-          // "default" expression is not quarded by additional line after it.
+        if (line == null
+            || line.isEmpty()
+            || line.startsWith("build ")
+            || line.startsWith("default ")) {
           if (!list.isEmpty()) {
-            parseExpression(list, builder);
+            parseTargetExpression(list, builder);
+            list.clear();
           }
-          list.add(line);
-          parseExpression(list, builder);
-        } else {
-          list.add(line);
+          if (line == null || lineStart >= (bufferStart + CHUNK_SIZE)) {
+            break;
+          }
         }
-        if (list.isEmpty()
-            && (line == null || reader.getCurrentEnd() >= (bufferStart + CHUNK_SIZE))) {
-          break;
+        if (line != null && !line.isEmpty()) {
+          if (list.isEmpty() && !(line.startsWith("build ") || line.startsWith("default "))) {
+            if (skippingStart) {
+              continue;
+            }
+            throw new NinjaFileFormatSkyFunctionException("Non proper file fragment: " + line);
+          }
+          skippingStart = false;
+          list.add(line);
         }
       }
     } catch (IOException e) {
@@ -65,64 +76,87 @@ public class NinjaTargetsFunction implements SkyFunction {
   }
 
   @VisibleForTesting
-  public static void parseExpression(List<String> lines, NinjaTargetsValue.Builder builder)
+  public static void parseTargetExpression(List<String> lines, NinjaTargetsValue.Builder builder)
       throws NinjaFileFormatSkyFunctionException {
     Preconditions.checkArgument(lines.size() > 0);
     String header = lines.get(0);
     if (header.startsWith("default ")) {
-      Preconditions.checkArgument(lines.size() == 1);
-      String[] words = header.split(" ");
-      // Skip first "default" word.
-      for (int i = 1; i < words.length; i++) {
-        builder.addDefault(words[i]);
-      }
+      parseDefault(lines, builder);
     } else if (header.startsWith("build ")) {
-      NinjaTarget.Builder tBuilder = NinjaTarget.builder();
-      String buildText = header.substring("build ".length());
-
-      TokenProcessor addToInputs = string -> tBuilder.addInputs(string.split(" "));
-      TokenProcessor addToImplicitInputs =
-          string -> tBuilder.addImplicitInputs(string.split(" "));
-      TokenProcessor addToOrderOnlyInputs =
-          string -> tBuilder.addOrderOnlyInputs(string.split(" "));
-
-      TokenProcessor addToOutputs = string -> tBuilder.addOutputs(string.split(" "));
-      TokenProcessor addToImplicitOutputs =
-          string -> tBuilder.addImplicitOutputs(string.split(" "));
-
-      new Splitter(":", true)
-          .head(new Splitter("|")
-              .head(addToOutputs)
-              .tail(addToImplicitOutputs))
-          .tail(new Splitter("||")
-              .head(new Splitter("|")
-                  .head(new Splitter(" ")
-                      .head(tBuilder::setCommand)
-                      .tail(addToInputs)
-                  )
-                  .tail(addToImplicitInputs)
-              )
-              .tail(addToOrderOnlyInputs)
-          ).accept(buildText);
-
-      NinjaTarget target = tBuilder.build();
-      String command = target.getCommand();
-      if (command == null) {
-        throw new NinjaFileFormatSkyFunctionException("Ninja target is missing command: " + header);
-      }
-      if ("phony".equals(command)) {
-        if (!target.getImplicitOutputs().isEmpty() || target.getOutputs().size() != 1) {
-          throw new NinjaFileFormatSkyFunctionException("Wrong phony target format: " + header);
-        }
-        builder.addAlias(target.getOutputs().get(0), target);
-      } else {
-        builder.addNinjaTarget(target);
-      }
+      parseBuild(lines, builder);
     } else {
       throw new NinjaFileFormatSkyFunctionException(
           String.format("Unexpected line start for build targets section: '%s'", header));
     }
-    lines.clear();
+  }
+
+  private static void parseBuild(List<String> lines, NinjaTargetsValue.Builder builder)
+      throws NinjaFileFormatSkyFunctionException {
+    NinjaTarget.Builder tBuilder = NinjaTarget.builder();
+
+    String header = lines.get(0);
+    parseHeader(header, tBuilder);
+    NinjaVariablesFunction.parseVariables(lines.subList(1, lines.size()))
+        .forEach(tBuilder::addVariable);
+
+    NinjaTarget target = tBuilder.build();
+    String command = target.getCommand();
+    if (command == null) {
+      throw new NinjaFileFormatSkyFunctionException("Ninja target is missing command: " + header);
+    }
+    if ("phony".equals(command)) {
+      if (!target.getImplicitOutputs().isEmpty() || target.getOutputs().size() != 1) {
+        throw new NinjaFileFormatSkyFunctionException("Wrong phony target format: " + header);
+      }
+      builder.addAlias(target.getOutputs().get(0), target);
+    } else {
+      builder.addNinjaTarget(target);
+    }
+  }
+
+  private static void parseHeader(String header, NinjaTarget.Builder tBuilder)
+      throws NinjaFileFormatSkyFunctionException {
+    String buildText = header.substring("build ".length());
+
+    TokenProcessor addToInputs = string -> tBuilder.addInputs(string.split(" "));
+    TokenProcessor addToImplicitInputs =
+        string -> tBuilder.addImplicitInputs(string.split(" "));
+    TokenProcessor addToOrderOnlyInputs =
+        string -> tBuilder.addOrderOnlyInputs(string.split(" "));
+
+    TokenProcessor addToOutputs = string -> tBuilder.addOutputs(string.split(" "));
+    TokenProcessor addToImplicitOutputs =
+        string -> tBuilder.addImplicitOutputs(string.split(" "));
+
+    new Splitter(":", true)
+        .head(new Splitter("|")
+            .head(addToOutputs)
+            .tail(addToImplicitOutputs))
+        .tail(new Splitter("||")
+            .head(new Splitter("|")
+                .head(new Splitter(" ")
+                    .head(tBuilder::setCommand)
+                    .tail(addToInputs)
+                )
+                .tail(addToImplicitInputs)
+            )
+            .tail(addToOrderOnlyInputs)
+        ).accept(buildText);
+  }
+
+  private static void parseDefault(List<String> lines, NinjaTargetsValue.Builder builder)
+      throws NinjaFileFormatSkyFunctionException {
+    String header = lines.get(0);
+    if (lines.size() > 1) {
+      throw new NinjaFileFormatSkyFunctionException(
+          "'default' is supposed to be one-line expression, but found: " +
+          String.join("\n", lines));
+    }
+    String[] words = header.split(" ");
+    // Skip first "default" word.
+    for (int i = 1; i < words.length; i++) {
+      builder.addDefault(words[i]);
+    }
   }
 
   @VisibleForTesting
@@ -174,7 +208,7 @@ public class NinjaTargetsFunction implements SkyFunction {
         if (!head.isEmpty()) {
           headSplitter.accept(head);
         }
-        String tail = text.substring(idx + 1).trim();
+        String tail = text.substring(idx + token.length()).trim();
         if (!tail.isEmpty()) {
           tailSplitter.accept(tail);
         }

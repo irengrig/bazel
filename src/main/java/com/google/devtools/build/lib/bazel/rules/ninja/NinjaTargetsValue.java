@@ -15,22 +15,30 @@ import java.util.List;
 import java.util.Objects;
 
 public class NinjaTargetsValue implements SkyValue {
-  public static final SkyFunctionName NINJA_ACTIONS =
-      SkyFunctionName.createHermetic("NINJA_ACTIONS");
-  private final ImmutableList<NinjaTarget> actions;
+  public static final SkyFunctionName NINJA_TARGETS =
+      SkyFunctionName.createHermetic("NINJA_TARGETS");
+  private final ImmutableList<NinjaTarget> targets;
   private final ImmutableSortedMap<String, NinjaTarget> aliases;
   private final ImmutableList<String> defaults;
 
-  public NinjaTargetsValue(ImmutableList<NinjaTarget> actions,
+  public NinjaTargetsValue(ImmutableList<NinjaTarget> targets,
       ImmutableSortedMap<String, NinjaTarget> aliases,
       ImmutableList<String> defaults) {
-    this.actions = actions;
+    this.targets = targets;
     this.aliases = aliases;
     this.defaults = defaults;
   }
 
-  public List<NinjaTarget> getActions() {
-    return actions;
+  public List<NinjaTarget> getTargets() {
+    return targets;
+  }
+
+  public ImmutableSortedMap<String, NinjaTarget> getAliases() {
+    return aliases;
+  }
+
+  public ImmutableList<String> getDefaults() {
+    return defaults;
   }
 
   @VisibleForTesting
@@ -80,7 +88,7 @@ public class NinjaTargetsValue implements SkyValue {
 
     @Override
     public SkyFunctionName functionName() {
-      return NINJA_ACTIONS;
+      return NINJA_TARGETS;
     }
 
     @Override
@@ -107,18 +115,18 @@ public class NinjaTargetsValue implements SkyValue {
   }
 
   public static class Builder {
-    private final ImmutableList.Builder<NinjaTarget> actionsBuilder;
+    private final ImmutableList.Builder<NinjaTarget> targetsBuilder;
     private final ImmutableSortedMap.Builder<String, NinjaTarget> aliasesBuilder;
     private final ImmutableList.Builder<String> defaultsBuilder;
 
     private Builder() {
-      actionsBuilder = new ImmutableList.Builder<>();
+      targetsBuilder = new ImmutableList.Builder<>();
       aliasesBuilder = ImmutableSortedMap.naturalOrder();
       defaultsBuilder = new ImmutableList.Builder<>();
     }
 
     public Builder addNinjaTarget(NinjaTarget action) {
-      actionsBuilder.add(action);
+      targetsBuilder.add(action);
       return this;
     }
 
@@ -133,7 +141,7 @@ public class NinjaTargetsValue implements SkyValue {
     }
 
     public NinjaTargetsValue build() {
-      return new NinjaTargetsValue(actionsBuilder.build(), aliasesBuilder.build(),
+      return new NinjaTargetsValue(targetsBuilder.build(), aliasesBuilder.build(),
           defaultsBuilder.build());
     }
   }
