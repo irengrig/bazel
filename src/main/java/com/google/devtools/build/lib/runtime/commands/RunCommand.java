@@ -21,6 +21,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.devtools.build.lib.actions.Artifact;
+import com.google.devtools.build.lib.actions.ArtifactRoot;
 import com.google.devtools.build.lib.actions.CommandLine;
 import com.google.devtools.build.lib.actions.CommandLineExpansionException;
 import com.google.devtools.build.lib.actions.ExecException;
@@ -218,7 +219,8 @@ public class RunCommand implements BlazeCommand  {
 
     BuildRequestOptions requestOptions = env.getOptions().getOptions(BuildRequestOptions.class);
 
-    PathFragment executablePath = executable.getPath().asFragment();
+    Path execPath = executable.getRoot().getRoot().getRelative(executable.getExecPath());
+    PathFragment executablePath = execPath.asFragment();
     PathPrettyPrinter prettyPrinter =
         OutputDirectoryLinksUtils.getPathPrettyPrinter(
             requestOptions.getSymlinkPrefix(productName),
@@ -227,7 +229,7 @@ public class RunCommand implements BlazeCommand  {
             requestOptions.printWorkspaceInOutputPathsIfNeeded
                 ? env.getWorkingDirectory()
                 : env.getWorkspace());
-    PathFragment prettyExecutablePath = prettyPrinter.getPrettyPath(executable.getPath());
+    PathFragment prettyExecutablePath = prettyPrinter.getPrettyPath(execPath);
 
     RunUnder runUnder = env.getOptions().getOptions(CoreOptions.class).runUnder;
     // Insert the command prefix specified by the "--run_under=<command-prefix>" option
@@ -704,7 +706,8 @@ public class RunCommand implements BlazeCommand  {
     // Shouldn't happen: We just validated the target.
     Preconditions.checkState(
         executable != null, "Could not find executable for target %s", configuredTarget);
-    Path executablePath = executable.getPath();
+    ArtifactRoot artifactRoot = executable.getRoot();
+    Path executablePath = artifactRoot.getRoot().getRelative(executable.getExecPath());
     try {
       if (!executablePath.exists() || !executablePath.isExecutable()) {
         env.getReporter().handle(Event.error(

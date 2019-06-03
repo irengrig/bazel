@@ -160,18 +160,17 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
         "This should be lazy!", false);
     outputsBuilder.add(ninjaLog);
 
-    // todo should it be this way??
+    Runfiles.Builder runfilesBuilder = new Runfiles.Builder(
+        ruleContext.getWorkspaceName(),
+        ruleContext.getConfiguration().legacyExternalRunfiles());
+    if (executableArtifact != null) {
+      // ? transitive artifacts
+      runfilesBuilder.addTransitiveArtifacts(NestedSetBuilder.<Artifact>stableOrder().add(executableArtifact).build());
+    }
     RunfilesProvider runfilesProvider = RunfilesProvider.withData(
         // No runfiles provided if not a data dependency.
         Runfiles.EMPTY,
-        // We only need to consider the outputs of a genrule
-        // No need to visit the dependencies of a genrule. They cross from the target into the host
-        // configuration, because the dependencies of a genrule are always built for the host
-        // configuration.
-        new Runfiles.Builder(
-            ruleContext.getWorkspaceName(),
-            ruleContext.getConfiguration().legacyExternalRunfiles())
-            .build());
+        runfilesBuilder.build());
 
     RuleConfiguredTargetBuilder builder = new RuleConfiguredTargetBuilder(ruleContext)
         .setFilesToBuild(outputsBuilder.build())
@@ -318,8 +317,9 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
       // Otherwise, this can be .intermediate artifact, either input of output.
       ArtifactRoot root = getSpecialMiddlemanRoot(fragment);
       for (Path listPath : list) {
+        Path rootPath = root.getRoot().getRelative(root.getExecPath());
         builder.add(analysisEnvironment
-            .getDerivedArtifactSomewhere(root.getRoot().relativize(listPath), root));
+            .getDerivedArtifactSomewhere(listPath.relativeTo(rootPath), root));
       }
     }
 

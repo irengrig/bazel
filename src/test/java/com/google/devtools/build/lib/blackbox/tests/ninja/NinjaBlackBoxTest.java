@@ -70,15 +70,11 @@ public class NinjaBlackBoxTest extends AbstractBlackBoxTest {
             + "executable_target = 'out/hello')");
 
     BuilderRunner bazel = context().bazel();
-    // bazel.build("//:build_hello");
+    bazel.build("//:build_hello");
 
-    // Path outPath = context().getWorkDir().resolve("out/hello");
-    // assertThat(outPath.toFile().exists()).named(outPath.toString()).isTrue();
+    ProcessResult result = bazel.run("//:build_hello");
 
-    // outPath.toFile().setExecutable(true);
-    ProcessResult result = bazel.enableDebug().run("//:build_hello");
-
-    // assertThat(result.outString()).isEqualTo("Hello, World!");
+    assertThat(result.outString()).isEqualTo("Hello, World!");
 
     Path ninjaLog = context().resolveGenPath(bazel, "ninja.log");
     assertThat(ninjaLog.toFile().exists()).named(ninjaLog.toString()).isTrue();
