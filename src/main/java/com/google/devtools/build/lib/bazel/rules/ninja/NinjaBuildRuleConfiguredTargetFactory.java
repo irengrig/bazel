@@ -61,7 +61,6 @@ import com.google.devtools.build.skyframe.SkyFunction.Environment;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.TreeSet;
 import javax.annotation.Nullable;
 
@@ -283,11 +282,11 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
   private static class RootsContext {
     private final PathPackageLocator pkgLocator;
     private Root workspaceRoot;
-    private final Map<String, ArtifactRoot> roots;
     private final Map<String, Artifact> artifactCache;
     private final FileSystem fs;
     private final ImmutableSet<PathFragment> blacklistedPackages;
     private final AnalysisEnvironment analysisEnvironment;
+    private ArtifactRoot execRoot;
 
     private RootsContext(PathPackageLocator pkgLocator, Path workspaceRoot,
         ImmutableSet<PathFragment> blacklistedPackages,
@@ -296,7 +295,6 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
       this.workspaceRoot = Root.fromPath(workspaceRoot);
       this.blacklistedPackages = blacklistedPackages;
       this.analysisEnvironment = analysisEnvironment;
-      roots = Maps.newHashMap();
       artifactCache = Maps.newHashMap();
       fs = pkgLocator.getOutputBase().getFileSystem();
     }
@@ -340,26 +338,28 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
         return;
       }
       // Otherwise, this can be .intermediate artifact, either input of output.
-      ArtifactRoot root = getSpecialMiddlemanRoot(fragment);
+
+      execRoot = ArtifactRoot.underWorkspaceOutputRoot(workspaceRoot.asPath(),
+          PathFragment.EMPTY_FRAGMENT);
       for (Path listPath : list) {
-        Path rootPath = root.getRoot().getRelative(root.getExecPath());
+        Path rootPath = execRoot.getRoot().getRelative(execRoot.getExecPath());
         Artifact artifact = analysisEnvironment
-            .getDerivedArtifactSomewhere(listPath.relativeTo(rootPath), root);
+            .getUnderWorkspaceArtifact(listPath.relativeTo(rootPath), execRoot);
         artifactCache.put(artifactPathString, artifact);
         builder.add(artifact);
       }
     }
 
-    private ArtifactRoot getSpecialMiddlemanRoot(PathFragment fragment) {
-      String dirName = fragment.getSegment(0);
-      ArtifactRoot root = roots.get(dirName);
-      if (root == null) {
-        root = ArtifactRoot.underWorkspaceMiddlemanRoot(workspaceRoot.asPath(),
-            PathFragment.create(dirName));
-        roots.put(dirName, root);
-      }
-      return root;
-    }
+    // private ArtifactRoot getSpecialMiddlemanRoot(PathFragment fragment) {
+    //   String dirName = fragment.getSegment(0);
+    //   ArtifactRoot root = roots.get(dirName);
+    //   if (root == null) {
+    //     root = ArtifactRoot.underWorkspaceOutputRoot(workspaceRoot.asPath(),
+    //         PathFragment.create(dirName));
+    //     roots.put(dirName, root);
+    //   }
+    //   return root;
+    // }
 
     @Nullable
     private Root getSourceRoot(PathFragment fragment, Path fsPath) {

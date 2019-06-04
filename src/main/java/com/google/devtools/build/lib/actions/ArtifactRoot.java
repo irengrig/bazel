@@ -1,4 +1,4 @@
-// Copyright 2014 The Bazel Authors. All rights reserved.
+// Copyright 2019 The Bazel Authors. All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -11,6 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
 
 package com.google.devtools.build.lib.actions;
 
@@ -81,11 +82,11 @@ public final class ArtifactRoot implements Comparable<ArtifactRoot>, Serializabl
   }
 
   // todo this is added for fast prototyping only
-  public static ArtifactRoot underWorkspaceMiddlemanRoot(
+  public static ArtifactRoot underWorkspaceOutputRoot(
       Path workspaceRoot,
       PathFragment relativeDirectory) {
     return INTERNER.intern(new ArtifactRoot(Root.fromPath(workspaceRoot),
-        relativeDirectory, RootType.Middleman));
+        relativeDirectory, RootType.WorkspaceOutput));
   }
 
   @AutoCodec.VisibleForSerialization
@@ -98,7 +99,8 @@ public final class ArtifactRoot implements Comparable<ArtifactRoot>, Serializabl
   enum RootType {
     Source,
     Output,
-    Middleman
+    Middleman,
+    WorkspaceOutput
   }
 
   private final Root root;

@@ -1,4 +1,4 @@
-// Copyright 2014 The Bazel Authors. All rights reserved.
+// Copyright 2019 The Bazel Authors. All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -11,6 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
 
 package com.google.devtools.build.lib.actions;
 
@@ -286,6 +287,21 @@ public abstract class Artifact
       super(root, execPath, owner);
       Preconditions.checkState(
           !root.getExecPath().isEmpty(), "Derived root has no exec path: %s, %s", root, execPath);
+      this.rootRelativePath = execPath.relativeTo(root.getExecPath());
+    }
+
+    @Override
+    public PathFragment getRootRelativePath() {
+      return rootRelativePath;
+    }
+  }
+
+  public static class UnderWorkspaceArtifact extends Artifact {
+    private final PathFragment rootRelativePath;
+
+    public UnderWorkspaceArtifact(ArtifactRoot root, PathFragment execPath,
+        ArtifactOwner owner) {
+      super(root, execPath, owner);
       this.rootRelativePath = execPath.relativeTo(root.getExecPath());
     }
 

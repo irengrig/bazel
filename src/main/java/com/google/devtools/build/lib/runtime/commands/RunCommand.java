@@ -1,4 +1,4 @@
-// Copyright 2014 The Bazel Authors. All rights reserved.
+// Copyright 2019 The Bazel Authors. All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -11,6 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
 
 package com.google.devtools.build.lib.runtime.commands;
 
@@ -21,7 +22,6 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.devtools.build.lib.actions.Artifact;
-import com.google.devtools.build.lib.actions.ArtifactRoot;
 import com.google.devtools.build.lib.actions.CommandLine;
 import com.google.devtools.build.lib.actions.CommandLineExpansionException;
 import com.google.devtools.build.lib.actions.ExecException;
@@ -219,8 +219,7 @@ public class RunCommand implements BlazeCommand  {
 
     BuildRequestOptions requestOptions = env.getOptions().getOptions(BuildRequestOptions.class);
 
-    Path execPath = executable.getRoot().getRoot().getRelative(executable.getExecPath());
-    PathFragment executablePath = execPath.asFragment();
+    PathFragment executablePath = executable.getPath().asFragment();
     PathPrettyPrinter prettyPrinter =
         OutputDirectoryLinksUtils.getPathPrettyPrinter(
             requestOptions.getSymlinkPrefix(productName),
@@ -229,7 +228,7 @@ public class RunCommand implements BlazeCommand  {
             requestOptions.printWorkspaceInOutputPathsIfNeeded
                 ? env.getWorkingDirectory()
                 : env.getWorkspace());
-    PathFragment prettyExecutablePath = prettyPrinter.getPrettyPath(execPath);
+    PathFragment prettyExecutablePath = prettyPrinter.getPrettyPath(executable.getPath());
 
     RunUnder runUnder = env.getOptions().getOptions(CoreOptions.class).runUnder;
     // Insert the command prefix specified by the "--run_under=<command-prefix>" option
@@ -706,8 +705,7 @@ public class RunCommand implements BlazeCommand  {
     // Shouldn't happen: We just validated the target.
     Preconditions.checkState(
         executable != null, "Could not find executable for target %s", configuredTarget);
-    ArtifactRoot artifactRoot = executable.getRoot();
-    Path executablePath = artifactRoot.getRoot().getRelative(executable.getExecPath());
+    Path executablePath = executable.getPath();
     try {
       if (!executablePath.exists() || !executablePath.isExecutable()) {
         env.getReporter().handle(Event.error(

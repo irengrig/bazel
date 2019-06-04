@@ -85,10 +85,10 @@ public class NinjaBlackBoxTest extends AbstractBlackBoxTest {
             + "executable_target = 'out/hello')");
 
     BuilderRunner bazel = context().bazel();
-    bazel.build("//:build_hello");
+    assertBuildExecuted(bazel.build("//:build_hello"));
 
-    ProcessResult secondBuildCached = bazel.build("//:build_hello");
-    System.out.println("ERR: " + secondBuildCached.errString());
+    // Nothing changed, build should be cached.
+    assertBuildCached(bazel.build("//:build_hello"));
 
     context().write("hello.cxx",
         "#include <iostream>",
@@ -98,18 +98,26 @@ public class NinjaBlackBoxTest extends AbstractBlackBoxTest {
         "    return 0;",
         "}");
 
-    // ProcessResult thirdRebuilt = bazel.enableDebug().build("//:build_hello");
-    // System.out.println("ERR: " + thirdRebuilt.errString());
+    // Source file changed, should be executed.
+    assertBuildExecuted(bazel.build("//:build_hello"));
 
     // For debug, uncomment this line and comment out the next; attach to the bazel process with debugger.
     // ProcessResult result = bazel.enableDebug().run("//:build_hello");
     ProcessResult result = bazel.run("//:build_hello");
-    System.out.println("ERR: " + result.errString());
+    assertBuildCached(result);
 
     assertThat(result.outString()).isEqualTo("Hello, Sun!");
 
-    Path ninjaLog = context().resolveGenPath(bazel, "ninja.log");
+    Path ninjaLog = context().resolveBinPath(bazel, "ninja.log");
     assertThat(ninjaLog.toFile().exists()).named(ninjaLog.toString()).isTrue();
     assertThat(PathUtils.readFile(ninjaLog)).containsExactly("This should be lazy!");
+  }
+
+  private void assertBuildExecuted(ProcessResult result) {
+    assertThat(result.errString()).contains("INFO: From NinjaBuild:");
+  }
+
+  private void assertBuildCached(ProcessResult result) {
+    assertThat(result.errString()).doesNotContain("INFO: From NinjaBuild:");
   }
 }

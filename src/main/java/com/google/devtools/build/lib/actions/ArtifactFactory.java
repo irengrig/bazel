@@ -1,4 +1,4 @@
-// Copyright 2014 The Bazel Authors. All rights reserved.
+// Copyright 2019 The Bazel Authors. All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -11,6 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
 package com.google.devtools.build.lib.actions;
 
 import com.google.common.annotations.VisibleForTesting;
@@ -19,6 +20,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.util.concurrent.Striped;
 import com.google.devtools.build.lib.actions.Artifact.SourceArtifact;
 import com.google.devtools.build.lib.actions.Artifact.SpecialArtifactType;
+import com.google.devtools.build.lib.actions.Artifact.UnderWorkspaceArtifact;
 import com.google.devtools.build.lib.cmdline.PackageIdentifier;
 import com.google.devtools.build.lib.cmdline.RepositoryName;
 import com.google.devtools.build.lib.concurrent.ThreadSafety.ThreadCompatible;
@@ -231,7 +233,7 @@ public class ArtifactFactory implements ArtifactResolver {
     return getArtifact(root, root.getExecPath().getRelative(rootRelativePath), owner, null);
   }
 
-  public Artifact getDerivedArtifactSomewhere(
+  public Artifact getUnderWorkspaceArtifact(
       PathFragment rootRelativePath, ArtifactRoot root, ArtifactOwner owner) {
     // Weakened checks.
     Preconditions.checkArgument(!root.isSourceRoot());
@@ -239,7 +241,7 @@ public class ArtifactFactory implements ArtifactResolver {
         rootRelativePath.isAbsolute() == root.getRoot().isAbsolute(), rootRelativePath);
     Preconditions.checkArgument(!rootRelativePath.containsUplevelReferences(), rootRelativePath);
 
-    return getArtifact(root, root.getExecPath().getRelative(rootRelativePath), owner, null);
+    return new UnderWorkspaceArtifact(root, root.getExecPath().getRelative(rootRelativePath), owner);
   }
 
   /**
