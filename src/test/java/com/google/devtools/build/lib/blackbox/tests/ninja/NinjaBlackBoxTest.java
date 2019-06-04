@@ -87,9 +87,26 @@ public class NinjaBlackBoxTest extends AbstractBlackBoxTest {
     BuilderRunner bazel = context().bazel();
     bazel.build("//:build_hello");
 
-    ProcessResult result = bazel.run("//:build_hello");
+    ProcessResult secondBuildCached = bazel.build("//:build_hello");
+    System.out.println("ERR: " + secondBuildCached.errString());
 
-    assertThat(result.outString()).isEqualTo("Hello, World!");
+    context().write("hello.cxx",
+        "#include <iostream>",
+        "int main()",
+        "{",
+        "    std::cout << \"Hello, Sun!\" << std::endl;",
+        "    return 0;",
+        "}");
+
+    // ProcessResult thirdRebuilt = bazel.enableDebug().build("//:build_hello");
+    // System.out.println("ERR: " + thirdRebuilt.errString());
+
+    // For debug, uncomment this line and comment out the next; attach to the bazel process with debugger.
+    // ProcessResult result = bazel.enableDebug().run("//:build_hello");
+    ProcessResult result = bazel.run("//:build_hello");
+    System.out.println("ERR: " + result.errString());
+
+    assertThat(result.outString()).isEqualTo("Hello, Sun!");
 
     Path ninjaLog = context().resolveGenPath(bazel, "ninja.log");
     assertThat(ninjaLog.toFile().exists()).named(ninjaLog.toString()).isTrue();

@@ -174,12 +174,14 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
     Artifact ninjaLog = FileWriteAction.createFile(ruleContext, "ninja.log",
         "This should be lazy!", false);
     outputsBuilder.add(ninjaLog);
+    NestedSet<Artifact> transitiveOutputs = outputsBuilder.build();
 
     Runfiles.Builder runfilesBuilder = new Runfiles.Builder(
         ruleContext.getWorkspaceName(),
         ruleContext.getConfiguration().legacyExternalRunfiles());
     if (executableArtifact != null) {
-      // ? transitive artifacts
+      // todo ? all transitive artifacts
+//      runfilesBuilder.addTransitiveArtifacts(transitiveOutputs);
       runfilesBuilder.addTransitiveArtifacts(NestedSetBuilder.<Artifact>stableOrder().add(executableArtifact).build());
     }
     RunfilesProvider runfilesProvider = RunfilesProvider.withData(
@@ -188,7 +190,7 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
         runfilesBuilder.build());
 
     RuleConfiguredTargetBuilder builder = new RuleConfiguredTargetBuilder(ruleContext)
-        .setFilesToBuild(outputsBuilder.build())
+        .setFilesToBuild(transitiveOutputs)
         .setRunfilesSupport(null, executableArtifact)
         .addProvider(RunfilesProvider.class, runfilesProvider);
     return builder.build();
@@ -282,6 +284,7 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
     private final PathPackageLocator pkgLocator;
     private Root workspaceRoot;
     private final Map<String, ArtifactRoot> roots;
+    private final Map<String, Artifact> artifactCache;
     private final FileSystem fs;
     private final ImmutableSet<PathFragment> blacklistedPackages;
     private final AnalysisEnvironment analysisEnvironment;
@@ -294,6 +297,7 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
       this.blacklistedPackages = blacklistedPackages;
       this.analysisEnvironment = analysisEnvironment;
       roots = Maps.newHashMap();
+      artifactCache = Maps.newHashMap();
       fs = pkgLocator.getOutputBase().getFileSystem();
     }
 
@@ -329,12 +333,20 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
           return;
         }
       }
+      String artifactPathString = fsPath.asFragment().getPathString();
+      Artifact cachedArtifact = artifactCache.get(artifactPathString);
+      if (cachedArtifact != null) {
+        builder.add(cachedArtifact);
+        return;
+      }
       // Otherwise, this can be .intermediate artifact, either input of output.
       ArtifactRoot root = getSpecialMiddlemanRoot(fragment);
       for (Path listPath : list) {
         Path rootPath = root.getRoot().getRelative(root.getExecPath());
-        builder.add(analysisEnvironment
-            .getDerivedArtifactSomewhere(listPath.relativeTo(rootPath), root));
+        Artifact artifact = analysisEnvironment
+            .getDerivedArtifactSomewhere(listPath.relativeTo(rootPath), root);
+        artifactCache.put(artifactPathString, artifact);
+        builder.add(artifact);
       }
     }
 
