@@ -1232,6 +1232,7 @@ java_library(
         "server/ServerWatcherRunnable.java",
     ],
     deps = [
+        ":bug-report",
         ":exitcode-external",
         ":io",
         ":os_util",
@@ -1241,7 +1242,6 @@ java_library(
         ":unix",
         ":util",
         "//src/main/java/com/google/devtools/build/lib/clock",
-        "//src/main/java/com/google/devtools/build/lib/concurrent",
         "//src/main/java/com/google/devtools/build/lib/profiler",
         "//src/main/java/com/google/devtools/build/lib/vfs",
         "//src/main/java/com/google/devtools/common/options",
