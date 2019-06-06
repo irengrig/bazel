@@ -1313,6 +1313,7 @@ java_library(
         ":packages-internal",
         ":process_util",
         ":shared-base-rules",
+        ":skylark_semantics",
         ":unix",
         ":util",
         "//src/main/java/com/google/devtools/build/lib/actions",
