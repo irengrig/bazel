@@ -70,7 +70,7 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
   @Override
   public ConfiguredTarget create(RuleContext ruleContext)
       throws InterruptedException, RuleErrorException, ActionConflictException {
-    Artifact srcArtifact = ruleContext.getPrerequisiteArtifact("src", Mode.TARGET);
+    Artifact srcArtifact = ruleContext.getPrerequisiteArtifact("build_ninja", Mode.TARGET);
     RootedPath rootedPath = RootedPath
         .toRootedPath(srcArtifact.getRoot().getRoot(), srcArtifact.getRootRelativePath());
     PathFragment executable = PathFragment.create(ruleContext.attributes().get("executable_target",

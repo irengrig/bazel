@@ -38,7 +38,7 @@ public class NinjaBlackBoxTest extends AbstractBlackBoxTest {
         "",
         "default hello.txt");
     context().write("BUILD",
-        "ninja_build(name = 'first_ninja', src = ':build.ninja')");
+        "ninja_build(name = 'first_ninja', build_ninja = ':build.ninja')");
 
     BuilderRunner bazel = context().bazel();
     bazel.build("//:first_ninja");
@@ -81,7 +81,7 @@ public class NinjaBlackBoxTest extends AbstractBlackBoxTest {
         "",
         "default out/hello");
     context().write("BUILD",
-        "ninja_build(name = 'build_hello', src = ':build.ninja', "
+        "ninja_build(name = 'build_hello', build_ninja = ':build.ninja', "
             + "executable_target = 'out/hello')");
 
     BuilderRunner bazel = context().bazel();

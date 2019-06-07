@@ -17,6 +17,7 @@ package com.google.devtools.build.lib.bazel.rules.ninja;
 
 import static com.google.devtools.build.lib.packages.Attribute.attr;
 import static com.google.devtools.build.lib.packages.BuildType.LABEL;
+import static com.google.devtools.build.lib.packages.BuildType.LABEL_LIST;
 import static com.google.devtools.build.lib.syntax.Type.BOOLEAN;
 
 import com.google.common.base.Preconditions;
@@ -39,7 +40,9 @@ public class NinjaBuildRule implements RuleDefinition {
     try {
       return builder
           .setOutputToGenfiles()
-          .add(attr("src", LABEL).allowedFileTypes(FileTypeSet.ANY_FILE)
+          .add(attr("srcs", LABEL_LIST).allowedFileTypes(FileTypeSet.ANY_FILE)
+              .cfg(HostTransition.createFactory()))
+          .add(attr("build_ninja", LABEL).allowedFileTypes(FileTypeSet.ANY_FILE)
               .cfg(HostTransition.createFactory()))
           .add(attr("executable_target", Type.STRING).defaultValue(""))
           .add(
