@@ -38,7 +38,9 @@ public class NinjaBlackBoxTest extends AbstractBlackBoxTest {
         "",
         "default hello.txt");
     context().write("BUILD",
-        "ninja_build(name = 'first_ninja', build_ninja = ':build.ninja')");
+        "ninja_build(name = 'first_ninja', ",
+        "srcs = [':build.ninja', ':name.txt'],",
+        "build_ninja = ':build.ninja')");
 
     BuilderRunner bazel = context().bazel();
     bazel.build("//:first_ninja");
@@ -51,9 +53,42 @@ public class NinjaBlackBoxTest extends AbstractBlackBoxTest {
     assertThat(ninjaLog.toFile().exists()).named(ninjaLog.toString()).isTrue();
     assertThat(PathUtils.readFile(ninjaLog)).containsExactly("This should be lazy!");
   }
+  @Test
+  public void testInclude() throws Exception {
+    context().write(".bazelignore", "out");
+    context().getWorkDir().resolve("out").toFile().mkdir();
+    context().write("name.txt", "Ninja");
+    context().write("rules.ninja",
+        "hello = Hello",
+        "",
+        "rule echo",
+        "  command = echo \"$hello from $$(cat $in) with include!\" > $out"
+        );
+    context().write("build.ninja",
+        "include rules.ninja",
+        "",
+        "build out/hello.txt: echo name.txt",
+        "",
+        "default hello.txt");
+    context().write("BUILD",
+        "ninja_build(name = 'first_ninja', ",
+            "srcs = [':build.ninja', ':rules.ninja', ':name.txt'],",
+            "build_ninja = ':build.ninja')");
+
+    BuilderRunner bazel = context().bazel();
+    bazel.build("//:first_ninja");
+
+    Path outPath = context().getWorkDir().resolve("out/hello.txt");
+    assertThat(outPath.toFile().exists()).named(outPath.toString()).isTrue();
+    assertThat(PathUtils.readFile(outPath)).containsExactly("Hello from Ninja with include!");
+
+    Path ninjaLog = context().resolveGenPath(bazel, "ninja.log");
+    assertThat(ninjaLog.toFile().exists()).named(ninjaLog.toString()).isTrue();
+    assertThat(PathUtils.readFile(ninjaLog)).containsExactly("This should be lazy!");
+  }
 
   @Test
-  public void testBuildSomething() throws Exception {
+  public void testBuildHelloWorldCxx() throws Exception {
     context().write(".bazelignore", "out");
     context().getWorkDir().resolve("out").toFile().mkdir();
 
@@ -81,8 +116,9 @@ public class NinjaBlackBoxTest extends AbstractBlackBoxTest {
         "",
         "default out/hello");
     context().write("BUILD",
-        "ninja_build(name = 'build_hello', build_ninja = ':build.ninja', "
-            + "executable_target = 'out/hello')");
+        "ninja_build(name = 'build_hello', ",
+        "srcs = [':build.ninja', ':hello.cxx'],",
+        "build_ninja = ':build.ninja', executable_target = 'out/hello')");
 
     BuilderRunner bazel = context().bazel();
     assertBuildExecuted(bazel.build("//:build_hello"));

@@ -30,16 +30,31 @@ import java.util.List;
 public class NinjaFileHeaderBulkValue implements SkyValue {
   public static final SkyFunctionName NINJA_HEADER_BULK =
       SkyFunctionName.createHermetic("NINJA_HEADER_BULK");
+  private RootedPath path;
+  private final List<String> includeStatements;
   private final List<String> variables;
   private final List<String> rules;
   private Pair<Long, Integer> position;
 
-  public NinjaFileHeaderBulkValue(List<String> variables,
+  public NinjaFileHeaderBulkValue(
+      RootedPath path,
+      List<String> includeStatements,
+      List<String> variables,
       List<String> rules,
       Pair<Long, Integer> position) {
+    this.path = path;
+    this.includeStatements = includeStatements;
     this.variables = variables;
     this.rules = rules;
     this.position = position;
+  }
+
+  public RootedPath getPath() {
+    return path;
+  }
+
+  public List<String> getIncludeStatements() {
+    return includeStatements;
   }
 
   public List<String> getVariables() {

@@ -21,7 +21,6 @@ import com.google.devtools.build.lib.util.Pair;
 import com.google.devtools.build.lib.vfs.RootedPath;
 import com.google.devtools.build.skyframe.SkyFunction;
 import com.google.devtools.build.skyframe.SkyFunctionException;
-import com.google.devtools.build.skyframe.SkyFunctionException.Transience;
 import com.google.devtools.build.skyframe.SkyKey;
 import com.google.devtools.build.skyframe.SkyValue;
 import java.io.File;
@@ -50,17 +49,23 @@ public class NinjaFileHeaderBulkFunction implements SkyFunction {
       && !line.startsWith("build ") && !line.startsWith("default"));
     LinesConsumer rules = new LinesConsumer(line -> line.startsWith("rule ")
         || line.startsWith(" ") || line.isEmpty());
+    LinesConsumer includeStatements = new LinesConsumer(line -> line.startsWith("include "));
     Pair<Long, Integer> position;
     try {
-      position = readHeaderParts(ninjaFilePath.asPath().getPathFile(), variables, rules);
+      position = readHeaderParts(ninjaFilePath.asPath().getPathFile(), includeStatements,
+          variables, rules);
     } catch (IOException e) {
       throw new NinjaFileFormatSkyFunctionException(e);
     }
 
-    return new NinjaFileHeaderBulkValue(variables.getLines(), rules.getLines(), position);
+    return new NinjaFileHeaderBulkValue(
+        ninjaFilePath,
+        includeStatements.getLines(), variables.getLines(), rules.getLines(), position);
   }
 
-  private static Pair<Long, Integer> readHeaderParts(File file, LinesConsumer... linesConsumers)
+  private static Pair<Long, Integer> readHeaderParts(File file,
+      LinesConsumer includeConsumer,
+      LinesConsumer... linesConsumers)
       throws IOException {
     Preconditions.checkArgument(linesConsumers.length > 0);
     Iterator<LinesConsumer> iterator = Arrays.asList(linesConsumers).iterator();
@@ -72,6 +77,9 @@ public class NinjaFileHeaderBulkFunction implements SkyFunction {
         String line = reader.readLine();
         consumed = false;
         if (line == null) {
+          continue;
+        }
+        if (includeConsumer.consume(line)) {
           continue;
         }
         consumed = current.consume(line);

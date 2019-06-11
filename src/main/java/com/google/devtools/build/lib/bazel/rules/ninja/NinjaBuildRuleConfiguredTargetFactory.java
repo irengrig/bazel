@@ -30,19 +30,23 @@ import com.google.devtools.build.lib.actions.ArtifactRoot;
 import com.google.devtools.build.lib.actions.CommandLines;
 import com.google.devtools.build.lib.actions.CompositeRunfilesSupplier;
 import com.google.devtools.build.lib.actions.MutableActionGraph.ActionConflictException;
+import com.google.devtools.build.lib.analysis.AliasProvider;
 import com.google.devtools.build.lib.analysis.AnalysisEnvironment;
 import com.google.devtools.build.lib.analysis.BlazeDirectories;
 import com.google.devtools.build.lib.analysis.CommandHelper;
 import com.google.devtools.build.lib.analysis.ConfiguredTarget;
+import com.google.devtools.build.lib.analysis.FileProvider;
 import com.google.devtools.build.lib.analysis.RuleConfiguredTargetBuilder;
 import com.google.devtools.build.lib.analysis.RuleConfiguredTargetFactory;
 import com.google.devtools.build.lib.analysis.RuleContext;
 import com.google.devtools.build.lib.analysis.Runfiles;
 import com.google.devtools.build.lib.analysis.RunfilesProvider;
 import com.google.devtools.build.lib.analysis.ShToolchain;
+import com.google.devtools.build.lib.analysis.TransitiveInfoCollection;
 import com.google.devtools.build.lib.analysis.actions.FileWriteAction;
 import com.google.devtools.build.lib.analysis.configuredtargets.RuleConfiguredTarget.Mode;
 import com.google.devtools.build.lib.bazel.rules.ninja.NinjaRule.ParameterName;
+import com.google.devtools.build.lib.cmdline.Label;
 import com.google.devtools.build.lib.collect.nestedset.NestedSet;
 import com.google.devtools.build.lib.collect.nestedset.NestedSetBuilder;
 import com.google.devtools.build.lib.packages.TargetUtils;
@@ -59,8 +63,10 @@ import com.google.devtools.build.lib.vfs.RootedPath;
 import com.google.devtools.build.lib.vfs.UnixGlob;
 import com.google.devtools.build.skyframe.SkyFunction.Environment;
 import java.io.IOException;
+import java.util.ArrayDeque;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.TreeSet;
 import javax.annotation.Nullable;
 
@@ -78,56 +84,63 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
 
     AnalysisEnvironment analysisEnvironment = ruleContext.getAnalysisEnvironment();
     Environment env = analysisEnvironment.getSkyframeEnv();
-    NinjaFileHeaderBulkValue ninjaHeaderBulkValue =
-        (NinjaFileHeaderBulkValue) env.getValue(NinjaFileHeaderBulkValue.key(rootedPath));
-    // We "schedule" file reading & caching the result, which will be used by
-    // NinjaVariablesValue and NinjaRulesValue - they will request it from SkyFrame, so no need
-    // in putting it into the SkyKey.
+
+    List<NinjaFileHeaderBulkValue> bulkValues = Lists.newArrayList();
+    try {
+      readBulkValuesWithAllIncludes(rootedPath, env, bulkValues);
+    } catch (NinjaFileFormatException e) {
+      ruleContext.getRuleErrorConsumer().throwWithRuleError(e.getMessage());
+      return null;
+    }
     if (env.valuesMissing()) {
       return null;
     }
-    Preconditions.checkNotNull(ninjaHeaderBulkValue);
 
-    NinjaVariablesValue ninjaVariables =
-        (NinjaVariablesValue) env.getValue(NinjaVariablesValue.key(rootedPath));
-    NinjaRulesValue ninjaRulesValue =
-        (NinjaRulesValue) env.getValue(NinjaRulesValue.key(rootedPath));
+    for (NinjaFileHeaderBulkValue bulkValue : bulkValues) {
+      env.getValue(NinjaVariablesValue.key(bulkValue.getPath()));
+      env.getValue(NinjaRulesValue.key(bulkValue.getPath()));
+    }
+    List<NinjaTargetsValue.Key> targetKeys = requestNinjaTargets(bulkValues, env);
+    if (env.valuesMissing()) {
+      return null;
+    }
+    List<NinjaTarget> targets = receiveNinjaTargets(targetKeys, env);
+    Preconditions.checkNotNull(targets);
 
+    ImmutableSortedMap.Builder<String, NinjaRule> rulesBuilder = ImmutableSortedMap.naturalOrder();
+    ImmutableSortedMap.Builder<String, String> variablesBuilder = ImmutableSortedMap.naturalOrder();
+    receiveVariableAndRules(variablesBuilder, rulesBuilder, bulkValues, env);
+
+    ImmutableSortedMap<String, NinjaRule> rules = rulesBuilder.build();
+    ImmutableSortedMap<String, String> variables = variablesBuilder.build();
+
+    return createConfiguredTarget(ruleContext, executable, analysisEnvironment, env, targets, rules,
+        variables);
+  }
+
+  private void receiveVariableAndRules(
+      ImmutableSortedMap.Builder<String, String> variablesBuilder,
+      ImmutableSortedMap.Builder<String, NinjaRule> rulesBuilder,
+      List<NinjaFileHeaderBulkValue> bulkValues,
+      Environment env) throws InterruptedException {
+    for (NinjaFileHeaderBulkValue bulkValue : bulkValues) {
+      RootedPath path = bulkValue.getPath();
+      NinjaVariablesValue ninjaVariablesValue = (NinjaVariablesValue)
+          Preconditions.checkNotNull(env.getValue(NinjaVariablesValue.key(path)));
+      variablesBuilder.putAll(ninjaVariablesValue.getVariables());
+      NinjaRulesValue ninjaRulesValue = (NinjaRulesValue)
+          Preconditions.checkNotNull(env.getValue(NinjaRulesValue.key(path)));
+      rulesBuilder.putAll(ninjaRulesValue.getRules());
+    }
+  }
+
+  private ConfiguredTarget createConfiguredTarget(RuleContext ruleContext, PathFragment executable,
+      AnalysisEnvironment analysisEnvironment, Environment env, List<NinjaTarget> targets,
+      ImmutableSortedMap<String, NinjaRule> rules, ImmutableSortedMap<String, String> variables)
+      throws InterruptedException, RuleErrorException, ActionConflictException {
     PathPackageLocator pkgLocator = PrecomputedValue.PATH_PACKAGE_LOCATOR.get(env);
     BlacklistedPackagePrefixesValue blacklistedPrefixes =
         (BlacklistedPackagePrefixesValue) env.getValue(BlacklistedPackagePrefixesValue.key());
-
-    // Now it's time to parse the action graph.
-    long length = rootedPath.asPath().getPathFile().length();
-    long start = Preconditions.checkNotNull(ninjaHeaderBulkValue.getPosition().getFirst());
-    long numBytesToRead = length - start;
-    int numWorkers = (int) Math.ceil((double) numBytesToRead / CHUNK_SIZE);
-
-    List<NinjaTargetsValue.Key> keys = Lists.newArrayListWithCapacity(numWorkers);
-    int lineStart = ninjaHeaderBulkValue.getPosition().getSecond();
-    for (int i = 0; i < numWorkers; i++) {
-      NinjaTargetsValue.Key key = NinjaTargetsValue
-          .key(rootedPath, i, start + i * CHUNK_SIZE, lineStart);
-      keys.add(key);
-      env.getValue(key);
-      lineStart = 0;
-    }
-    if (env.valuesMissing()) {
-      return null;
-    }
-
-    List<NinjaTarget> targets = Lists.newArrayList();
-    // todo do we need it at all?
-    TreeSet<String> defaults = Sets.newTreeSet();
-    ImmutableSortedMap.Builder<String, NinjaTarget> aliases = ImmutableSortedMap.naturalOrder();
-
-    for (NinjaTargetsValue.Key targetKey : keys) {
-      NinjaTargetsValue chunkValue = Preconditions.checkNotNull(
-          (NinjaTargetsValue) env.getValue(targetKey));
-      targets.addAll(chunkValue.getTargets());
-      defaults.addAll(chunkValue.getDefaults());
-      aliases.putAll(chunkValue.getAliases());
-    }
 
     BlazeDirectories directories = Preconditions.checkNotNull(ruleContext.getConfiguration())
         .getDirectories();
@@ -142,8 +155,6 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
       return null;
     }
 
-    ImmutableSortedMap<String, NinjaRule> rules = ninjaRulesValue.getRules();
-    ImmutableSortedMap<String, String> variables = ninjaVariables.getVariables();
     Artifact executableArtifact = null;
     for (NinjaTarget target : targets) {
       String command = target.getCommand();
@@ -179,9 +190,8 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
         ruleContext.getWorkspaceName(),
         ruleContext.getConfiguration().legacyExternalRunfiles());
     if (executableArtifact != null) {
-      // todo ? all transitive artifacts
-//      runfilesBuilder.addTransitiveArtifacts(transitiveOutputs);
-      runfilesBuilder.addTransitiveArtifacts(NestedSetBuilder.<Artifact>stableOrder().add(executableArtifact).build());
+      runfilesBuilder.addTransitiveArtifacts(NestedSetBuilder.<Artifact>stableOrder()
+          .add(executableArtifact).build());
     }
     RunfilesProvider runfilesProvider = RunfilesProvider.withData(
         // No runfiles provided if not a data dependency.
@@ -193,6 +203,88 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
         .setRunfilesSupport(null, executableArtifact)
         .addProvider(RunfilesProvider.class, runfilesProvider);
     return builder.build();
+  }
+
+  private void readBulkValuesWithAllIncludes(
+      RootedPath rootedPath,
+      Environment env,
+      List<NinjaFileHeaderBulkValue> bulkValues)
+      throws InterruptedException, NinjaFileFormatException {
+
+    ArrayDeque<RootedPath> queue = new ArrayDeque<>();
+    queue.add(rootedPath);
+
+    while (!queue.isEmpty()) {
+      RootedPath path = queue.removeFirst();
+      NinjaFileHeaderBulkValue ninjaHeaderBulkValue =
+          (NinjaFileHeaderBulkValue) env.getValue(NinjaFileHeaderBulkValue.key(path));
+      if (ninjaHeaderBulkValue != null) {
+        bulkValues.add(ninjaHeaderBulkValue);
+        queue.addAll(parseIncludes(rootedPath, ninjaHeaderBulkValue.getIncludeStatements()));
+      }
+    }
+  }
+
+  private List<RootedPath> parseIncludes(RootedPath rootedPath, List<String> includeStatements)
+      throws NinjaFileFormatException {
+    List<RootedPath> result = Lists.newArrayList();
+    for (String includeStatement : includeStatements) {
+      // precondition check as it was already checked in bulk parser
+      Preconditions.checkArgument(includeStatement.startsWith("include "));
+      PathFragment includedPath = PathFragment.create(includeStatement.substring(8).trim());
+      if (includedPath.isAbsolute()) {
+        throw new NinjaFileFormatException("Do not expect absolute files to be included: "
+            + includedPath);
+      }
+      result.add(RootedPath.toRootedPath(rootedPath.getRoot(), includedPath));
+    }
+    return result;
+  }
+
+  private List<NinjaTargetsValue.Key> requestNinjaTargets(List<NinjaFileHeaderBulkValue> bulkValues,
+      Environment env) throws InterruptedException {
+    List<NinjaTargetsValue.Key> keys = Lists.newArrayList();
+    for (NinjaFileHeaderBulkValue bulkValue : bulkValues) {
+      requestNinjaTarget(bulkValue, env, keys);
+    }
+    return keys;
+  }
+
+  private List<NinjaTarget> receiveNinjaTargets(List<NinjaTargetsValue.Key> ninjaTargetKeys,
+      Environment env) throws InterruptedException {
+    List<NinjaTarget> targets = Lists.newArrayList();
+    // todo do we need it at all?
+    TreeSet<String> defaults = Sets.newTreeSet();
+    ImmutableSortedMap.Builder<String, NinjaTarget> aliases = ImmutableSortedMap.naturalOrder();
+
+    for (NinjaTargetsValue.Key targetKey : ninjaTargetKeys) {
+      NinjaTargetsValue chunkValue = Preconditions.checkNotNull(
+          (NinjaTargetsValue) env.getValue(targetKey));
+      targets.addAll(chunkValue.getTargets());
+      defaults.addAll(chunkValue.getDefaults());
+      aliases.putAll(chunkValue.getAliases());
+    }
+    return targets;
+  }
+
+  private void requestNinjaTarget(
+      NinjaFileHeaderBulkValue ninjaHeaderBulkValue,
+      Environment env,
+      List<NinjaTargetsValue.Key> keys) throws InterruptedException {
+    RootedPath rootedPath = ninjaHeaderBulkValue.getPath();
+    long length = rootedPath.asPath().getPathFile().length();
+    long start = Preconditions.checkNotNull(ninjaHeaderBulkValue.getPosition().getFirst());
+    long numBytesToRead = length - start;
+    int numWorkers = (int) Math.ceil((double) numBytesToRead / CHUNK_SIZE);
+
+    int lineStart = ninjaHeaderBulkValue.getPosition().getSecond();
+    for (int i = 0; i < numWorkers; i++) {
+      NinjaTargetsValue.Key key = NinjaTargetsValue
+          .key(rootedPath, i, start + i * CHUNK_SIZE, lineStart);
+      keys.add(key);
+      env.getValue(key);
+      lineStart = 0;
+    }
   }
 
   private final static ImmutableSortedMap<String, String> ESCAPE_REPLACEMENTS =
@@ -220,10 +312,21 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
     ImmutableSortedMap<String, String> replacedParameters =
         replaceVariablesInVariables(variables, ImmutableSortedMap.copyOf(parameters));
 
-    // todo just input & output for now
-    CommandHelper commandHelper = CommandHelper.builder(ruleContext).build();
-
     NestedSetBuilder<Artifact> inputsBuilder = NestedSetBuilder.stableOrder();
+
+    ImmutableMap.Builder<Label, NestedSet<Artifact>> labelMap = ImmutableMap.builder();
+    for (TransitiveInfoCollection dep : ruleContext.getPrerequisites("srcs", Mode.TARGET)) {
+      NestedSet<Artifact> files = dep.getProvider(FileProvider.class).getFilesToBuild();
+      inputsBuilder.addTransitive(files);
+      labelMap.put(AliasProvider.getDependencyLabel(dep), files);
+    }
+    TransitiveInfoCollection buildNinja = ruleContext.getPrerequisite("build_ninja", Mode.TARGET);
+    NestedSet<Artifact> files = buildNinja.getProvider(FileProvider.class).getFilesToBuild();
+    inputsBuilder.addTransitive(files);
+    //labelMap.put(AliasProvider.getDependencyLabel(buildNinja), files);
+
+    // inputsBuilder.add(ruleContext. getPrerequisiteArtifact("build_ninja", Mode.TARGET));
+    // inputsBuilder.addAll(ruleContext.getPrerequisiteArtifacts("srcs", Mode.TARGET).list());
     for (String s : target.getInputs()) {
       rootsContext.addArtifacts(inputsBuilder, s, true);
     }
@@ -245,6 +348,12 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
     for (String output : target.getImplicitOutputs()) {
       rootsContext.addArtifacts(indirectOutputsBuilder, output, false);
     }
+
+    // todo just input & output for now
+    CommandHelper commandHelper = CommandHelper
+        .builder(ruleContext)
+        .addLabelMap(labelMap.build())
+        .build();
 
     // todo use description etc.
     String command = replacedParameters.get(ParameterName.command.name());

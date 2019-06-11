@@ -24,7 +24,9 @@ import com.google.common.base.Preconditions;
 import com.google.devtools.build.lib.analysis.BaseRuleClasses;
 import com.google.devtools.build.lib.analysis.RuleDefinition;
 import com.google.devtools.build.lib.analysis.RuleDefinitionEnvironment;
+import com.google.devtools.build.lib.analysis.config.ExecutionTransitionFactory;
 import com.google.devtools.build.lib.analysis.config.HostTransition;
+import com.google.devtools.build.lib.analysis.config.TransitionFactories;
 import com.google.devtools.build.lib.packages.Attribute;
 import com.google.devtools.build.lib.packages.AttributeMap;
 import com.google.devtools.build.lib.packages.BuildType;
@@ -40,10 +42,8 @@ public class NinjaBuildRule implements RuleDefinition {
     try {
       return builder
           .setOutputToGenfiles()
-          .add(attr("srcs", LABEL_LIST).allowedFileTypes(FileTypeSet.ANY_FILE)
-              .cfg(HostTransition.createFactory()))
-          .add(attr("build_ninja", LABEL).allowedFileTypes(FileTypeSet.ANY_FILE)
-              .cfg(HostTransition.createFactory()))
+          .add(attr("srcs", LABEL_LIST).allowedFileTypes(FileTypeSet.ANY_FILE))
+          .add(attr("build_ninja", LABEL).allowedFileTypes(FileTypeSet.ANY_FILE))
           .add(attr("executable_target", Type.STRING).defaultValue(""))
           .add(
               attr("$is_executable", BOOLEAN)
