@@ -36,6 +36,7 @@ import com.google.devtools.build.lib.analysis.BlazeDirectories;
 import com.google.devtools.build.lib.analysis.CommandHelper;
 import com.google.devtools.build.lib.analysis.ConfiguredTarget;
 import com.google.devtools.build.lib.analysis.FileProvider;
+import com.google.devtools.build.lib.analysis.PrerequisiteArtifacts;
 import com.google.devtools.build.lib.analysis.RuleConfiguredTargetBuilder;
 import com.google.devtools.build.lib.analysis.RuleConfiguredTargetFactory;
 import com.google.devtools.build.lib.analysis.RuleContext;
@@ -66,7 +67,7 @@ import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
+import java.util.Optional;
 import java.util.TreeSet;
 import javax.annotation.Nullable;
 
@@ -77,8 +78,7 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
   public ConfiguredTarget create(RuleContext ruleContext)
       throws InterruptedException, RuleErrorException, ActionConflictException {
     Artifact srcArtifact = ruleContext.getPrerequisiteArtifact("build_ninja", Mode.TARGET);
-    RootedPath rootedPath = RootedPath
-        .toRootedPath(srcArtifact.getRoot().getRoot(), srcArtifact.getRootRelativePath());
+    RootedPath rootedPath = getRootedPath(srcArtifact);
     PathFragment executable = PathFragment.create(ruleContext.attributes().get("executable_target",
         Type.STRING));
 
@@ -87,7 +87,8 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
 
     List<NinjaFileHeaderBulkValue> bulkValues = Lists.newArrayList();
     try {
-      readBulkValuesWithAllIncludes(rootedPath, env, bulkValues);
+      readBulkValuesWithAllIncludes(rootedPath, env,
+          ruleContext.getPrerequisiteArtifacts("srcs", Mode.TARGET), bulkValues);
     } catch (NinjaFileFormatException e) {
       ruleContext.getRuleErrorConsumer().throwWithRuleError(e.getMessage());
       return null;
@@ -116,6 +117,11 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
 
     return createConfiguredTarget(ruleContext, executable, analysisEnvironment, env, targets, rules,
         variables);
+  }
+
+  private RootedPath getRootedPath(Artifact srcArtifact) {
+    return RootedPath
+        .toRootedPath(srcArtifact.getRoot().getRoot(), srcArtifact.getRootRelativePath());
   }
 
   private void receiveVariableAndRules(
@@ -208,6 +214,7 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
   private void readBulkValuesWithAllIncludes(
       RootedPath rootedPath,
       Environment env,
+      PrerequisiteArtifacts srcs,
       List<NinjaFileHeaderBulkValue> bulkValues)
       throws InterruptedException, NinjaFileFormatException {
 
@@ -220,12 +227,13 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
           (NinjaFileHeaderBulkValue) env.getValue(NinjaFileHeaderBulkValue.key(path));
       if (ninjaHeaderBulkValue != null) {
         bulkValues.add(ninjaHeaderBulkValue);
-        queue.addAll(parseIncludes(rootedPath, ninjaHeaderBulkValue.getIncludeStatements()));
+        queue.addAll(parseIncludes(srcs, ninjaHeaderBulkValue.getIncludeStatements()));
       }
     }
   }
 
-  private List<RootedPath> parseIncludes(RootedPath rootedPath, List<String> includeStatements)
+  private List<RootedPath> parseIncludes(PrerequisiteArtifacts srcs,
+      List<String> includeStatements)
       throws NinjaFileFormatException {
     List<RootedPath> result = Lists.newArrayList();
     for (String includeStatement : includeStatements) {
@@ -236,7 +244,15 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
         throw new NinjaFileFormatException("Do not expect absolute files to be included: "
             + includedPath);
       }
-      result.add(RootedPath.toRootedPath(rootedPath.getRoot(), includedPath));
+
+      Optional<Artifact> artifact = srcs.list().stream()
+          .filter(a -> a.getExecPath().equals(includedPath)).findFirst();
+      if (artifact.isPresent()) {
+        result.add(getRootedPath(artifact.get()));
+      } else {
+        throw new NinjaFileFormatException("Can not find artifact for included: " +
+            includedPath.getPathString());
+      }
     }
     return result;
   }
