@@ -42,7 +42,7 @@ class FileChannelLinesReader {
   public String readLine() throws IOException {
     NinjaFileLine line = new NinjaFileLine();
     while (!line.isEol() && !atEOF) {
-      readNextChunkIfNeeded();
+      readNextChunkIfNeeded(line.isEol());
       readLineFromBuffer(line);
     }
     String text = line.getLine();
@@ -52,17 +52,21 @@ class FileChannelLinesReader {
     return text;
   }
 
-  private void readNextChunkIfNeeded() throws IOException {
+  private void readNextChunkIfNeeded(boolean force) throws IOException {
     if (atEOF) {
       return;
     }
-    if (buffer == null || buffer.position() >= buffer.limit()) {
+    if (force || buffer == null || buffer.position() >= buffer.limit()) {
       bufferStart = fch.position();
+
+      byteBuffer.position(0);
+      byteBuffer.limit(byteBuffer.capacity());
+
       int bytesRead = fch.read(byteBuffer);
       currentEnd = fch.position() + byteBuffer.limit();
-      byteBuffer.position(0);
+
       byteBuffer.limit(bytesRead > 0 ? bytesRead : 0);
-      atEOF = bytesRead <= 0;
+      atEOF = bytesRead == -1;
       buffer = StandardCharsets.ISO_8859_1.decode(byteBuffer);
     }
   }
@@ -97,7 +101,7 @@ class FileChannelLinesReader {
 
   public void position(long bufferStart, int lineStart) throws IOException {
     fch.position(bufferStart);
-    readNextChunkIfNeeded();
+    readNextChunkIfNeeded(false);
     buffer.position(lineStart);
   }
 
