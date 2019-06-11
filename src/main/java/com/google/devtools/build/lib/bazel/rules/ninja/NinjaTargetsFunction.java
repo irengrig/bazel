@@ -62,6 +62,9 @@ public class NinjaTargetsFunction implements SkyFunction {
       while (true) {
         long lineStart = reader.getCurrentEnd();
         String line = reader.readLine();
+        if (line != null && line.startsWith("#")) {
+          continue;
+        }
         if (line == null
             || line.isEmpty()
             || line.startsWith("build ")
