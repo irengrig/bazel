@@ -139,6 +139,11 @@ public class GitRepositoryBlackBoxTest extends AbstractBlackBoxTest {
     WorkspaceTestUtils.assertLinesExactly(outPath, HELLO_FROM_EXTERNAL_REPOSITORY);
   }
 
+  /**
+   * Tests usage of git_repository workspace rule in the particular use case, when only the
+   * commit hash is specified, and the commit is not in the HEAD-reachable subtree,
+   * on a separate branch.
+   */
   @Test
   public void testCheckoutOfCommitFromBranch() throws Exception {
     Path repo = context().getTmpDir().resolve("branch_repo");
