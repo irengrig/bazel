@@ -123,6 +123,27 @@ java_test(
 )
 
 java_test(
+    name = "NinjaFileChannelLinesReaderTest",
+    size = "small",
+    srcs = [
+        "NinjaFileChannelLinesReaderTest.java",
+    ],
+    test_class = "com.google.devtools.build.lib.AllTests",
+    deps = [
+        "//src/main/java/com/google/devtools/build/lib:util",
+        "//src/main/java/com/google/devtools/build/lib/bazel/rules/ninja:ninja_build",
+        "//src/test/java/com/google/devtools/build/lib:test_runner",
+        "//src/test/java/com/google/devtools/build/lib:testutil",
+        "//src/test/java/com/google/devtools/build/lib/blackbox/framework",
+        "//third_party:guava",
+        "//third_party:jsr305",
+        "//third_party:junit4",
+        "//third_party:truth",
+        "//third_party:truth8",
+    ],
+)
+
+java_test(
     name = "NinjaVariableReplacementUtilTest",
     size = "small",
     srcs = [

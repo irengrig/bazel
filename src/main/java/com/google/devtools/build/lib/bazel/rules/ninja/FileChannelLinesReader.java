@@ -63,9 +63,10 @@ class FileChannelLinesReader {
       byteBuffer.limit(byteBuffer.capacity());
 
       int bytesRead = fch.read(byteBuffer);
+      byteBuffer.position(0);
+      byteBuffer.limit(bytesRead > 0 ? bytesRead : 0);
       currentEnd = fch.position() + byteBuffer.limit();
 
-      byteBuffer.limit(bytesRead > 0 ? bytesRead : 0);
       atEOF = bytesRead == -1;
       buffer = StandardCharsets.ISO_8859_1.decode(byteBuffer);
     }
