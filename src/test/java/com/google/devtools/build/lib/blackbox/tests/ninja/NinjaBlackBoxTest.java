@@ -99,6 +99,50 @@ public class NinjaBlackBoxTest extends AbstractBlackBoxTest {
   }
 
   @Test
+  public void testBazelProvidesInputForNinja() throws Exception {
+    context().write("helper.bzl",
+        "def _impl(ctx):",
+        "  out = ctx.actions.declare_file('generated_hello.txt')",
+        "  ctx.actions.write(out, 'Generated')",
+        "  return [DefaultInfo(files = depset([out]))]",
+        "",
+        "generate_hello = rule(",
+        "  implementation = _impl",
+        ")");
+    context().write(".bazelignore", "out");
+    context().getWorkDir().resolve("out").toFile().mkdir();
+    context().write("build.ninja",
+        "hello = Hello",
+        "",
+        "rule echo",
+        "  command = echo \"$hello from $$(cat $in)!\" > $out",
+        "",
+        "build out/hello.txt: echo name.txt",
+        "",
+        "default hello.txt");
+    context().write("BUILD",
+        "load(':helper.bzl', 'generate_hello')",
+        "generate_hello(name = 'generated')",
+        "ninja_build(name = 'first_ninja', ",
+        "  srcs = [':build.ninja'],",
+        "  deps_mapping = {':generated': 'name.txt'},",
+        "  build_ninja = ':build.ninja',",
+        ")"
+    );
+
+    BuilderRunner bazel = context().bazel();
+    bazel.build("//:first_ninja");
+
+    Path outPath = context().getWorkDir().resolve("out/hello.txt");
+    assertThat(outPath.toFile().exists()).named(outPath.toString()).isTrue();
+    assertThat(PathUtils.readFile(outPath)).containsExactly("Hello from Generated!");
+
+    Path ninjaLog = context().resolveGenPath(bazel, "ninja.log");
+    assertThat(ninjaLog.toFile().exists()).named(ninjaLog.toString()).isTrue();
+    assertThat(PathUtils.readFile(ninjaLog)).containsExactly("This should be lazy!");
+  }
+
+  @Test
   public void testInclude() throws Exception {
     context().write(".bazelignore", "out");
     context().getWorkDir().resolve("out").toFile().mkdir();

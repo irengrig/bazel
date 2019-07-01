@@ -17,16 +17,19 @@ package com.google.devtools.build.lib.bazel.rules.ninja;
 
 import static com.google.devtools.build.lib.packages.Attribute.attr;
 import static com.google.devtools.build.lib.packages.BuildType.LABEL;
+import static com.google.devtools.build.lib.packages.BuildType.LABEL_KEYED_STRING_DICT;
 import static com.google.devtools.build.lib.packages.BuildType.LABEL_LIST;
 import static com.google.devtools.build.lib.syntax.Type.BOOLEAN;
 
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableMap;
 import com.google.devtools.build.lib.analysis.BaseRuleClasses;
 import com.google.devtools.build.lib.analysis.RuleDefinition;
 import com.google.devtools.build.lib.analysis.RuleDefinitionEnvironment;
 import com.google.devtools.build.lib.analysis.config.ExecutionTransitionFactory;
 import com.google.devtools.build.lib.analysis.config.HostTransition;
 import com.google.devtools.build.lib.analysis.config.TransitionFactories;
+import com.google.devtools.build.lib.cmdline.Label;
 import com.google.devtools.build.lib.packages.Attribute;
 import com.google.devtools.build.lib.packages.AttributeMap;
 import com.google.devtools.build.lib.packages.BuildType;
@@ -44,7 +47,11 @@ public class NinjaBuildRule implements RuleDefinition {
           .setOutputToGenfiles()
           .add(attr("srcs", LABEL_LIST).allowedFileTypes(FileTypeSet.ANY_FILE))
           .add(attr("build_ninja", LABEL).allowedFileTypes(FileTypeSet.ANY_FILE))
+          .add(attr("deps_mapping", LABEL_KEYED_STRING_DICT)
+              .allowedFileTypes(FileTypeSet.ANY_FILE)
+              .value(ImmutableMap.<Label, String>of()))
           .add(attr("export_targets", Type.STRING_DICT)
+              .value(ImmutableMap.of())
               .nonconfigurable("File groups settings")
               .setDoc("Map of targets (i.e. file path) to the output group names. "
                   + "It is expected for an output group to have only one contained target."))

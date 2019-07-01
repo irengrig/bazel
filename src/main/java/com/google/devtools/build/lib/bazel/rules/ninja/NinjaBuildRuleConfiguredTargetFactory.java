@@ -50,6 +50,7 @@ import com.google.devtools.build.lib.bazel.rules.ninja.NinjaRule.ParameterName;
 import com.google.devtools.build.lib.cmdline.Label;
 import com.google.devtools.build.lib.collect.nestedset.NestedSet;
 import com.google.devtools.build.lib.collect.nestedset.NestedSetBuilder;
+import com.google.devtools.build.lib.packages.BuildType;
 import com.google.devtools.build.lib.packages.TargetUtils;
 import com.google.devtools.build.lib.pkgcache.PathPackageLocator;
 import com.google.devtools.build.lib.rules.genrule.GenRuleAction;
@@ -68,9 +69,7 @@ import java.util.ArrayDeque;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.TreeSet;
-import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 
 public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTargetFactory {
@@ -153,9 +152,11 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
     BlazeDirectories directories = Preconditions.checkNotNull(ruleContext.getConfiguration())
         .getDirectories();
     Path workspaceRoot = directories.getWorkspace();
+    Map<PathFragment, Artifact> aliases = fillDepsMapping(ruleContext);
     RootsContext rootsContext = new RootsContext(Preconditions.checkNotNull(pkgLocator),
         workspaceRoot,
-        Preconditions.checkNotNull(blacklistedPrefixes).getPatterns(), analysisEnvironment);
+        Preconditions.checkNotNull(blacklistedPrefixes).getPatterns(), analysisEnvironment,
+        aliases);
 
     NestedSetBuilder<Artifact> outputsBuilder = NestedSetBuilder.stableOrder();
     PathFragment shExecutable = ShToolchain.getPathOrError(ruleContext);
@@ -230,6 +231,35 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
         .addOutputGroups(outputGroups)
         .addProvider(RunfilesProvider.class, runfilesProvider);
     return builder.build();
+  }
+
+  private Map<PathFragment, Artifact> fillDepsMapping(RuleContext ruleContext)
+      throws RuleErrorException {
+    Map<Label, String> depsMapping = Preconditions.checkNotNull(ruleContext.attributes().get(
+        "deps_mapping", BuildType.LABEL_KEYED_STRING_DICT));
+    List<? extends TransitiveInfoCollection> depsMappingPrerequisites =
+        Preconditions.checkNotNull(ruleContext.getPrerequisites("deps_mapping", Mode.TARGET));
+    Map<PathFragment, Artifact> aliases = Maps.newHashMapWithExpectedSize(depsMapping.size());
+    for (TransitiveInfoCollection dep : depsMappingPrerequisites) {
+      NestedSet<Artifact> files = dep.getProvider(FileProvider.class).getFilesToBuild();
+      Label specifiedLabel = AliasProvider.getDependencyLabel(dep);
+      String mappingName = depsMapping.get(specifiedLabel);
+      Preconditions.checkNotNull(mappingName);
+
+      // we expect only 1 item, so that's fine to flatten
+      ImmutableList<Artifact> artifactsList = files.toList();
+      if (artifactsList.isEmpty()) {
+        ruleContext.getRuleErrorConsumer().
+            throwWithRuleError("Can not find mapping for: " + mappingName);
+      }
+      if (artifactsList.size() > 1) {
+        ruleContext.getRuleErrorConsumer().
+            throwWithRuleError("Multiple files specified for mapping: " + mappingName +
+            ", but expected only one.");
+      }
+      aliases.put(PathFragment.create(mappingName), artifactsList.get(0));
+    }
+    return aliases;
   }
 
   private void readBulkValuesWithAllIncludes(
@@ -339,9 +369,9 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
 
     Map<String, String> parameters = Maps.newHashMap();
     rule.getParameters().forEach((key, value) -> parameters.put(key.name(), value));
-    parameters.put(ParameterName.in.name(), String.join(" ", target.getInputs()));
-    parameters.put(ParameterName.in_newline.name(), String.join("\n", target.getInputs()));
-    parameters.put(ParameterName.out.name(), String.join(" ", target.getOutputs()));
+    parameters.put(ParameterName.in.name(), String.join(" ", rootsContext.maybeReplaceAliases(target.getInputs())));
+    parameters.put(ParameterName.in_newline.name(), String.join("\n", rootsContext.maybeReplaceAliases(target.getInputs())));
+    parameters.put(ParameterName.out.name(), String.join(" ", rootsContext.maybeReplaceAliases(target.getOutputs())));
 
     // Merge variable defined in target so that they override correctly.
     parameters.putAll(target.getVariables());
@@ -360,10 +390,7 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
     TransitiveInfoCollection buildNinja = ruleContext.getPrerequisite("build_ninja", Mode.TARGET);
     NestedSet<Artifact> files = buildNinja.getProvider(FileProvider.class).getFilesToBuild();
     inputsBuilder.addTransitive(files);
-    //labelMap.put(AliasProvider.getDependencyLabel(buildNinja), files);
 
-    // inputsBuilder.add(ruleContext. getPrerequisiteArtifact("build_ninja", Mode.TARGET));
-    // inputsBuilder.addAll(ruleContext.getPrerequisiteArtifacts("srcs", Mode.TARGET).list());
     for (String s : target.getInputs()) {
       rootsContext.addArtifacts(inputsBuilder, s, true);
     }
@@ -432,23 +459,48 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
     private final FileSystem fs;
     private final ImmutableSet<PathFragment> blacklistedPackages;
     private final AnalysisEnvironment analysisEnvironment;
+    private final Map<PathFragment, Artifact> aliases;
     private ArtifactRoot execRoot;
 
     private RootsContext(PathPackageLocator pkgLocator, Path workspaceRoot,
         ImmutableSet<PathFragment> blacklistedPackages,
-        AnalysisEnvironment analysisEnvironment) {
+        AnalysisEnvironment analysisEnvironment,
+        Map<PathFragment, Artifact> aliases) {
       this.pkgLocator = pkgLocator;
       this.workspaceRoot = Root.fromPath(workspaceRoot);
       this.blacklistedPackages = blacklistedPackages;
       this.analysisEnvironment = analysisEnvironment;
+      this.aliases = aliases;
       artifactCache = Maps.newHashMap();
       fs = pkgLocator.getOutputBase().getFileSystem();
+    }
+
+    public ImmutableList<String> maybeReplaceAliases(ImmutableList<String> paths) {
+      ImmutableList.Builder<String> builder = ImmutableList.builder();
+      for (String path : paths) {
+        builder.add(maybeReplaceAlias(path));
+      }
+      return builder.build();
+    }
+
+    public String maybeReplaceAlias(String path) {
+      Artifact alias = aliases.get(PathFragment.create(path));
+      if (alias != null) {
+        return alias.getPath().asFragment().getPathString();
+      }
+      return path;
     }
 
     public void addArtifacts(NestedSetBuilder<Artifact> builder,
         String path, boolean isInput) throws IOException {
       PathFragment fragment = PathFragment.create(path);
       Preconditions.checkArgument(fragment.segmentCount() > 0);
+
+      Artifact mappedArtifact = aliases.get(fragment);
+      if (mappedArtifact != null) {
+        builder.add(mappedArtifact);
+        return;
+      }
 
       Path fsPath;
       if (fragment.isAbsolute()) {
