@@ -56,6 +56,38 @@ public class NinjaBlackBoxTest extends AbstractBlackBoxTest {
   }
 
   @Test
+  public void testFilteringTargets() throws Exception {
+    context().write(".bazelignore", "out");
+    context().getWorkDir().resolve("out").toFile().mkdir();
+    context().write("name.txt", "Ninja");
+    context().write("build.ninja",
+        "rule echo",
+        "  command = echo \"Hello from $$(cat $in)!\" > $out",
+        "",
+        "build out/hello.txt: echo name.txt",
+        "",
+        "build something_unneeded: echo non_existing_input.txt",
+        "",
+        "default out/hello.txt");
+    context().write("BUILD",
+        "ninja_build(name = 'first_ninja', ",
+        "srcs = [':build.ninja', ':name.txt'],",
+        "export_targets = {'out/hello.txt': 'hello'},",
+        "build_ninja = ':build.ninja')");
+
+    BuilderRunner bazel = context().bazel();
+    bazel.build("//:first_ninja");
+
+    Path outPath = context().getWorkDir().resolve("out/hello.txt");
+    assertThat(outPath.toFile().exists()).named(outPath.toString()).isTrue();
+    assertThat(PathUtils.readFile(outPath)).containsExactly("Hello from Ninja!");
+
+    Path ninjaLog = context().resolveGenPath(bazel, "ninja.log");
+    assertThat(ninjaLog.toFile().exists()).named(ninjaLog.toString()).isTrue();
+    assertThat(PathUtils.readFile(ninjaLog)).containsExactly("This should be lazy!");
+  }
+
+  @Test
   public void testOutputGroups() throws Exception {
     copyFileRule();
     context().write(".bazelignore", "out");

@@ -69,6 +69,7 @@ import java.util.ArrayDeque;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.TreeSet;
 import javax.annotation.Nullable;
 
@@ -173,6 +174,9 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
       requestedTargets.put(PathFragment.create(entry.getKey()), entry.getValue());
     }
 
+    // filter only targets, needed for output
+    targets = filterOnlyNeededTargets(executable, targets, requestedTargets);
+
     Artifact executableArtifact = null;
     for (NinjaTarget target : targets) {
       String command = target.getCommand();
@@ -231,6 +235,55 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
         .addOutputGroups(outputGroups)
         .addProvider(RunfilesProvider.class, runfilesProvider);
     return builder.build();
+  }
+
+  private List<NinjaTarget> filterOnlyNeededTargets(PathFragment executable,
+      List<NinjaTarget> targets, Map<PathFragment, String> requestedTargets) {
+    ArrayDeque<PathFragment> queue = new ArrayDeque<>();
+    queue.addAll(requestedTargets.keySet());
+    if (executable != null && !executable.isEmpty()) {
+      queue.add(executable);
+    }
+    if (queue.isEmpty()) {
+      return targets;
+    }
+
+    Set<NinjaTarget> filteredTargets = Sets.newHashSet();
+    Set<PathFragment> checkedPf = Sets.newHashSet();
+
+    // TODO: express it better
+    Map<PathFragment, NinjaTarget> pf2target = Maps.newHashMap();
+    for (NinjaTarget target : targets) {
+      for (String output : target.getOutputs()) {
+        pf2target.put(PathFragment.create(output), target);
+      }
+      for (String output : target.getImplicitOutputs()) {
+        pf2target.put(PathFragment.create(output), target);
+      }
+    }
+
+    while (!queue.isEmpty()) {
+      PathFragment pf = queue.removeFirst();
+      checkedPf.add(pf);
+      NinjaTarget ninjaTarget = pf2target.get(pf);
+      if (ninjaTarget == null) {
+        // must be an input file then; further: check it
+        continue;
+      }
+
+      filteredTargets.add(ninjaTarget);
+
+      List<String> inputs = Lists.newArrayList(ninjaTarget.getInputs());
+      inputs.addAll(ninjaTarget.getImplicitInputs());
+      inputs.addAll(ninjaTarget.getOrderOnlyInputs());
+      for (String input : inputs) {
+        PathFragment inputPf = PathFragment.create(input);
+        if (!checkedPf.contains(inputPf)) {
+          queue.add(inputPf);
+        }
+      }
+    }
+    return Lists.newArrayList(filteredTargets);
   }
 
   private Map<PathFragment, Artifact> fillDepsMapping(RuleContext ruleContext)
