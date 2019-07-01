@@ -44,6 +44,10 @@ public class NinjaBuildRule implements RuleDefinition {
           .setOutputToGenfiles()
           .add(attr("srcs", LABEL_LIST).allowedFileTypes(FileTypeSet.ANY_FILE))
           .add(attr("build_ninja", LABEL).allowedFileTypes(FileTypeSet.ANY_FILE))
+          .add(attr("export_targets", Type.STRING_DICT)
+              .nonconfigurable("File groups settings")
+              .setDoc("Map of targets (i.e. file path) to the output group names. "
+                  + "It is expected for an output group to have only one contained target."))
           .add(attr("executable_target", Type.STRING).defaultValue(""))
           .add(
               attr("$is_executable", BOOLEAN)

@@ -68,7 +68,9 @@ import java.util.ArrayDeque;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.TreeSet;
+import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 
 public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTargetFactory {
@@ -160,6 +162,15 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
     if (ruleContext.hasErrors()) {
       return null;
     }
+    Map<String, String> exportTargets = Preconditions.checkNotNull(ruleContext.attributes()
+        .get("export_targets", Type.STRING_DICT));
+    Map<String, NestedSet<Artifact>> outputGroups =
+        Maps.newHashMapWithExpectedSize(exportTargets.size());
+    Map<PathFragment, String> requestedTargets =
+        Maps.newHashMapWithExpectedSize(exportTargets.size());
+    for (Map.Entry<String, String> entry : exportTargets.entrySet()) {
+      requestedTargets.put(PathFragment.create(entry.getKey()), entry.getValue());
+    }
 
     Artifact executableArtifact = null;
     for (NinjaTarget target : targets) {
@@ -171,8 +182,17 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
       try {
         NestedSet<Artifact> filesToBuild = registerNinjaAction(
             ruleContext, rootsContext, shExecutable, target, ninjaRule, variables);
-        if (executableArtifact == null) {
+        if (executableArtifact == null || !requestedTargets.isEmpty()) {
           for (Artifact artifact : filesToBuild) {
+            PathFragment currentPathFragment = artifact.getPath().asFragment();
+            Optional<PathFragment> requestedPathFragment = requestedTargets.keySet().stream()
+                .filter(currentPathFragment::endsWith).findFirst();
+            if (requestedPathFragment.isPresent()) {
+              String outputGroupName =
+                  Preconditions.checkNotNull(requestedTargets.remove(requestedPathFragment.get()));
+              outputGroups.put(outputGroupName,
+                  NestedSetBuilder.<Artifact>stableOrder().add(artifact).build());
+            }
             if (executable.equals(artifact.getExecPath())) {
               executableArtifact = artifact;
             }
@@ -207,6 +227,7 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
     RuleConfiguredTargetBuilder builder = new RuleConfiguredTargetBuilder(ruleContext)
         .setFilesToBuild(transitiveOutputs)
         .setRunfilesSupport(null, executableArtifact)
+        .addOutputGroups(outputGroups)
         .addProvider(RunfilesProvider.class, runfilesProvider);
     return builder.build();
   }
