@@ -296,21 +296,32 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
     for (TransitiveInfoCollection dep : depsMappingPrerequisites) {
       NestedSet<Artifact> files = dep.getProvider(FileProvider.class).getFilesToBuild();
       Label specifiedLabel = AliasProvider.getDependencyLabel(dep);
-      String mappingName = depsMapping.get(specifiedLabel);
-      Preconditions.checkNotNull(mappingName);
+      PathFragment mappingFragment =
+          PathFragment.create(Preconditions.checkNotNull(depsMapping.get(specifiedLabel)));
 
       // we expect only 1 item, so that's fine to flatten
       ImmutableList<Artifact> artifactsList = files.toList();
       if (artifactsList.isEmpty()) {
         ruleContext.getRuleErrorConsumer().
-            throwWithRuleError("Can not find mapping for: " + mappingName);
+            throwWithRuleError("Can not find mapping for: " + mappingFragment);
+      } else if (artifactsList.size() > 1) {
+        PathFragment mappingName = mappingFragment.subFragment(mappingFragment.segmentCount() - 1);
+        boolean found = false;
+        for (Artifact artifact : artifactsList) {
+          if (artifact.getExecPath().endsWith(mappingName)) {
+            aliases.put(mappingFragment, artifact);
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          ruleContext.getRuleErrorConsumer().
+              throwWithRuleError("Multiple files specified for mapping: " + mappingFragment +
+                  ", but expected only one.");
+        }
+      } else {
+        aliases.put(mappingFragment, artifactsList.get(0));
       }
-      if (artifactsList.size() > 1) {
-        ruleContext.getRuleErrorConsumer().
-            throwWithRuleError("Multiple files specified for mapping: " + mappingName +
-            ", but expected only one.");
-      }
-      aliases.put(PathFragment.create(mappingName), artifactsList.get(0));
     }
     return aliases;
   }
