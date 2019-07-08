@@ -307,7 +307,9 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
       } else if (artifactsList.size() > 1) {
         PathFragment mappingName = mappingFragment.subFragment(mappingFragment.segmentCount() - 1);
         boolean found = false;
+        List<String> candidates = Lists.newArrayList();
         for (Artifact artifact : artifactsList) {
+          candidates.add(artifact.getFilename());
           if (artifact.getExecPath().endsWith(mappingName)) {
             aliases.put(mappingFragment, artifact);
             found = true;
@@ -316,8 +318,9 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
         }
         if (!found) {
           ruleContext.getRuleErrorConsumer().
-              throwWithRuleError("Multiple files specified for mapping: " + mappingFragment +
-                  ", but expected only one.");
+              throwWithRuleError(String
+                  .format("Multiple files [%s] specified for mapping: %s, but expected only one.",
+                      String.join(", ", candidates), mappingFragment));
         }
       } else {
         aliases.put(mappingFragment, artifactsList.get(0));
