@@ -33,7 +33,7 @@ public class NinjaBlackBoxTest extends AbstractBlackBoxTest {
     context().write("name.txt", "Ninja");
     context().write("build.ninja",
         "rule echo",
-        "  command = echo \"Hello from $$(cat $in)!\" > $out",
+        "  command = echo \"Hello from $$(cat $in)!\">$out && echo \"One more command!\">> $out",
         "",
         "build out/hello.txt: echo name.txt",
         "",
@@ -48,7 +48,8 @@ public class NinjaBlackBoxTest extends AbstractBlackBoxTest {
 
     Path outPath = context().getWorkDir().resolve("out/hello.txt");
     assertThat(outPath.toFile().exists()).named(outPath.toString()).isTrue();
-    assertThat(PathUtils.readFile(outPath)).containsExactly("Hello from Ninja!");
+    assertThat(PathUtils.readFile(outPath))
+        .containsExactly("Hello from Ninja!", "One more command!");
 
     Path ninjaLog = context().resolveGenPath(bazel, "ninja.log");
     assertThat(ninjaLog.toFile().exists()).named(ninjaLog.toString()).isTrue();
