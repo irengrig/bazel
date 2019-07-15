@@ -42,8 +42,12 @@ public class NinjaFileHeaderBulkFunctionTest {
         "  command = $cc $cflags -c $in -o$", // escaping the newline
         " $out",
         "",
+        "pool link_pool",
+        "  depth = 4",
+        "",
         "rule link",
         "  command = $cc $in -o $out",
+        "  pool = link_pool",
         "",
         "build hello.o: compile hello.c",
         "build hello: link hello.o",
@@ -68,8 +72,12 @@ public class NinjaFileHeaderBulkFunctionTest {
         "rule compile",
         "  command = $cc $cflags -c $in -o $out",
         "",
+        "pool link_pool",
+        "  depth = 4",
+        "",
         "rule link",
         "  command = $cc $in -o $out",
+        "  pool = link_pool",
         "");
   }
 

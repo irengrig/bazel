@@ -45,10 +45,16 @@ public class NinjaFileHeaderBulkFunction implements SkyFunction {
 
   public static SkyValue compute(RootedPath ninjaFilePath)
       throws NinjaFileFormatSkyFunctionException {
-    LinesConsumer variables = new LinesConsumer(line -> !line.startsWith("rule ")
-      && !line.startsWith("build ") && !line.startsWith("default"));
-    LinesConsumer rules = new LinesConsumer(line -> line.startsWith("rule ")
-        || line.startsWith(" ") || line.isEmpty());
+    LinesConsumer variables = new LinesConsumer(line ->
+      !line.startsWith("rule ")
+      && !line.startsWith("build ")
+      && !line.startsWith("default")
+      && !line.startsWith("pool "));
+    LinesConsumer rules = new LinesConsumer(line ->
+        line.startsWith("rule ")
+        || line.startsWith("pool ")
+        || line.startsWith(" ")
+        || line.isEmpty());
     LinesConsumer includeStatements = new LinesConsumer(line -> line.startsWith("include "));
     Pair<Long, Integer> position;
     try {

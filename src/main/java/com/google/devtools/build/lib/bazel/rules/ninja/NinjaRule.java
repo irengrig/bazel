@@ -56,6 +56,7 @@ public class NinjaRule {
     restat,
     rspfile,
     rspfile_content,
+    pool,
 
     // These variables are provided by the target.
     in,

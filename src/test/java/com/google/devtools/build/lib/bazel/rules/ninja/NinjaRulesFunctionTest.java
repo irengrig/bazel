@@ -38,8 +38,10 @@ public class NinjaRulesFunctionTest {
     NinjaRulesValue value = NinjaRulesFunction.compute(lines);
     assertThat(value).isNotNull();
     ImmutableSortedMap.Builder<String, NinjaRule> builder = ImmutableSortedMap.naturalOrder();
-    builder.put("compile", new NinjaRule(ImmutableSortedMap.of(ParameterName.command, "$cc $cflags -c $in -o $out")));
-    builder.put("link", new NinjaRule(ImmutableSortedMap.of(ParameterName.command, "$cc $in -o $out")));
+    builder.put("compile",
+        new NinjaRule(ImmutableSortedMap.of(ParameterName.command, "$cc $cflags -c $in -o $out")));
+    builder.put("link",
+        new NinjaRule(ImmutableSortedMap.of(ParameterName.command, "$cc $in -o $out")));
     assertThat(value.getRules()).containsExactlyEntriesIn(builder.build());
   }
 

@@ -46,8 +46,10 @@ public class NinjaRulesFunction implements SkyFunction {
     String name = null;
     ImmutableSortedMap.Builder<NinjaRule.ParameterName, String> parametersBuilder =
         ImmutableSortedMap.naturalOrder();
+    boolean inPool = false;
     for (String line : lines) {
       if (line.startsWith("rule ")) {
+        inPool = false;
         String[] parts = line.split(" ");
         if (parts.length != 2) {
           throw new NinjaFileFormatSkyFunctionException(
@@ -60,7 +62,14 @@ public class NinjaRulesFunction implements SkyFunction {
         name = parts[1];
       } else if (line.trim().startsWith("#") || line.trim().isEmpty()) {
         // Skip the line.
+      } else if (line.startsWith("pool ")) {
+        // skip the pool statement; if there was some rule before, it will be processed when the
+        // definition of the next rule comes, or after iteration
+        inPool = true;
       } else if (line.startsWith(" ")) {
+        if (inPool) {
+          continue;
+        }
         int idx = line.indexOf("=");
         if (idx >= 0) {
           String key = line.substring(0, idx).trim();

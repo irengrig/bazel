@@ -220,6 +220,31 @@ public class NinjaTargetsFunctionTest {
     assertThat(value.getDefaults()).hasSize(1000);
   }
 
+  @Test
+  public void testReadingTargetsWithPool() throws Exception {
+    List<String> lines = Lists.newArrayList(
+        "some = stuff to be skipped",
+        "build out1: command inp1 ${inp2}",
+        "  pool =",
+        "build out2: commandxx inp3 inp4",
+        "  pool = xxx");
+    Path buildNinja = Files.createTempFile("test", ".ninja");
+    PathUtils.writeFile(buildNinja, lines.toArray(new String[0]));
+    Root root = Root.absoluteRoot(FileSystems.getNativeFileSystem());
+    RootedPath rootedPath = RootedPath.toRootedPath(root,
+        PathFragment.create(buildNinja.toString()));
+
+    NinjaTargetsValue.Key key = NinjaTargetsValue.Key.create(rootedPath, 0, 0, 0);
+    NinjaTargetsValue.Builder builder = NinjaTargetsValue.builder();
+    NinjaTargetsFunction.parseFileFragmentForNinjaTargets(key, rootedPath, builder);
+
+    NinjaTargetsValue value = builder.build();
+    assertThat(value.getTargets()).hasSize(2);
+    List<String> outputs = Lists.newArrayList();
+    value.getTargets().forEach(t -> outputs.addAll(t.getOutputs()));
+    assertThat(outputs).containsExactly("out1", "out2");
+  }
+
   private TokenProcessor expect(String text, Runnable r) {
     r.run();
     return s -> assertThat(s).isEqualTo(text);
