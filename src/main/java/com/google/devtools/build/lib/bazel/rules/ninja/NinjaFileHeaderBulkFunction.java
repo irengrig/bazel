@@ -55,7 +55,8 @@ public class NinjaFileHeaderBulkFunction implements SkyFunction {
         || line.startsWith("pool ")
         || line.startsWith(" ")
         || line.isEmpty());
-    LinesConsumer includeStatements = new LinesConsumer(line -> line.startsWith("include "));
+    LinesConsumer includeStatements = new LinesConsumer(line -> line.startsWith("include ")
+        || line.startsWith("subninja "));
     Pair<Long, Integer> position;
     try {
       position = readHeaderParts(ninjaFilePath.asPath().getPathFile(), includeStatements,

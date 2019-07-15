@@ -356,8 +356,12 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
     List<RootedPath> result = Lists.newArrayList();
     for (String includeStatement : includeStatements) {
       // precondition check as it was already checked in bulk parser
-      Preconditions.checkArgument(includeStatement.startsWith("include "));
-      PathFragment includedPath = PathFragment.create(includeStatement.substring(8).trim());
+      Preconditions.checkArgument(includeStatement.startsWith("include ")
+          || includeStatement.startsWith("subninja "));
+      int spaceIdx = includeStatement.indexOf(' ');
+      Preconditions.checkArgument(spaceIdx > 0);
+      PathFragment includedPath = PathFragment.create(
+          includeStatement.substring(spaceIdx + 1).trim());
       if (includedPath.isAbsolute()) {
         throw new NinjaFileFormatException("Do not expect absolute files to be included: "
             + includedPath);
