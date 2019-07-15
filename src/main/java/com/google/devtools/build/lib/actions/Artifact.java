@@ -309,8 +309,9 @@ public abstract class Artifact
     public DerivedArtifact(
         ArtifactRoot root, PathFragment execPath, ActionLookupKey owner, boolean contentBasedPath) {
       super(root, execPath, contentBasedPath);
-      Preconditions.checkState(
-          !root.getExecPath().isEmpty(), "Derived root has no exec path: %s, %s", root, execPath);
+      // todo make it a constructor parameter or move it to only some of the ancestors, but exclude this check for under workspace artefact
+      // Preconditions.checkState(
+      //     !root.getExecPath().isEmpty(), "Derived root has no exec path: %s, %s", root, execPath);
       this.rootRelativePath = execPath.relativeTo(root.getExecPath());
       this.owner = owner;
     }
@@ -408,12 +409,12 @@ public abstract class Artifact
     }
   }
 
-  public static class UnderWorkspaceArtifact extends Artifact {
+  public static final class UnderWorkspaceArtifact extends DerivedArtifact {
     private final PathFragment rootRelativePath;
 
     public UnderWorkspaceArtifact(ArtifactRoot root, PathFragment execPath,
-        ArtifactOwner owner) {
-      super(root, execPath, owner);
+        ActionLookupKey owner) {
+      super(root, execPath, owner, false);
       this.rootRelativePath = execPath.relativeTo(root.getExecPath());
     }
 

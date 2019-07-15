@@ -1,4 +1,4 @@
-// Copyright 2014 The Bazel Authors. All rights reserved.
+// Copyright 2019 The Bazel Authors. All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -11,6 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
 package com.google.devtools.build.lib.analysis;
 
 import com.google.common.base.Joiner;
@@ -22,6 +23,7 @@ import com.google.devtools.build.lib.actions.ActionAnalysisMetadata;
 import com.google.devtools.build.lib.actions.ActionKeyContext;
 import com.google.devtools.build.lib.actions.ActionLookupValue;
 import com.google.devtools.build.lib.actions.Artifact;
+import com.google.devtools.build.lib.actions.Artifact.DerivedArtifact;
 import com.google.devtools.build.lib.actions.Artifact.SpecialArtifact;
 import com.google.devtools.build.lib.actions.ArtifactFactory;
 import com.google.devtools.build.lib.actions.ArtifactRoot;
@@ -39,6 +41,7 @@ import com.google.devtools.build.lib.skyframe.WorkspaceStatusValue;
 import com.google.devtools.build.lib.syntax.StarlarkSemantics;
 import com.google.devtools.build.lib.util.Pair;
 import com.google.devtools.build.lib.vfs.PathFragment;
+import com.google.devtools.build.lib.vfs.Root;
 import com.google.devtools.build.skyframe.SkyFunction;
 import java.io.PrintWriter;
 import java.io.StringWriter;
@@ -259,14 +262,14 @@ public class CachingAnalysisEnvironment implements AnalysisEnvironment {
    * running with --experimental_extended_sanity_checks.
    */
   @SuppressWarnings("unchecked") // Cast of artifacts map's value to Pair.
-  private Artifact.DerivedArtifact dedupAndTrackArtifactAndOrigin(
-      Artifact.DerivedArtifact a, @Nullable Throwable e) {
+  private Artifact dedupAndTrackArtifactAndOrigin(
+      Artifact a, @Nullable Throwable e) {
     if (artifacts.containsKey(a)) {
       Object value = artifacts.get(a);
       if (e == null) {
-        return (Artifact.DerivedArtifact) value;
+        return (Artifact) value;
       } else {
-        return ((Pair<Artifact.DerivedArtifact, String>) value).first;
+        return ((Pair<Artifact, String>) value).first;
       }
     }
     if ((e != null)) {
@@ -280,6 +283,14 @@ public class CachingAnalysisEnvironment implements AnalysisEnvironment {
   }
 
   @Override
+  public Artifact getSourceArtifact(PathFragment rootRelativePath, Root root) {
+    Preconditions.checkState(enabled);
+    return dedupAndTrackArtifactAndOrigin(
+        artifactFactory.getSourceArtifact(rootRelativePath, root, getOwner()),
+        extendedSanityChecks ? new Throwable() : null);
+  }
+
+  @Override
   public Artifact.DerivedArtifact getDerivedArtifact(
       PathFragment rootRelativePath, ArtifactRoot root) {
     return getDerivedArtifact(rootRelativePath, root, /*contentBasedPath=*/ false);
@@ -289,8 +300,16 @@ public class CachingAnalysisEnvironment implements AnalysisEnvironment {
   public Artifact.DerivedArtifact getDerivedArtifact(
       PathFragment rootRelativePath, ArtifactRoot root, boolean contentBasedPath) {
     Preconditions.checkState(enabled);
-    return dedupAndTrackArtifactAndOrigin(
+    return (DerivedArtifact) dedupAndTrackArtifactAndOrigin(
         artifactFactory.getDerivedArtifact(rootRelativePath, root, getOwner(), contentBasedPath),
+        extendedSanityChecks ? new Throwable() : null);
+  }
+
+  @Override
+  public Artifact getUnderWorkspaceArtifact(PathFragment rootRelativePath, ArtifactRoot root) {
+    Preconditions.checkState(enabled);
+    return dedupAndTrackArtifactAndOrigin(
+        artifactFactory.getUnderWorkspaceArtifact(rootRelativePath, root, getOwner()),
         extendedSanityChecks ? new Throwable() : null);
   }
 
@@ -307,7 +326,7 @@ public class CachingAnalysisEnvironment implements AnalysisEnvironment {
   public Artifact.DerivedArtifact getFilesetArtifact(
       PathFragment rootRelativePath, ArtifactRoot root) {
     Preconditions.checkState(enabled);
-    return dedupAndTrackArtifactAndOrigin(
+    return (DerivedArtifact) dedupAndTrackArtifactAndOrigin(
         artifactFactory.getFilesetArtifact(rootRelativePath, root, getOwner()),
         extendedSanityChecks ? new Throwable() : null);
   }

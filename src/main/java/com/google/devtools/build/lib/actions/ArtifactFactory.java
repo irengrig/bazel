@@ -254,7 +254,8 @@ public class ArtifactFactory implements ArtifactResolver {
         rootRelativePath.isAbsolute() == root.getRoot().isAbsolute(), rootRelativePath);
     Preconditions.checkArgument(!rootRelativePath.containsUplevelReferences(), rootRelativePath);
 
-    return new UnderWorkspaceArtifact(root, root.getExecPath().getRelative(rootRelativePath), owner);
+    return new UnderWorkspaceArtifact(root, root.getExecPath().getRelative(rootRelativePath),
+        (ActionLookupKey) owner);
   }
 
   /**
