@@ -54,7 +54,7 @@ public class NinjaVariableReplacementUtilTest {
         .withExpected("one", "!tres 3", "two", "!tres 3")
         .test();
     try {
-      new MapReplacementTester("one", "+++$two", "two", "!${three.3}", "cycle", "$one.15")
+      new MapReplacementTester("one", "+++$two", "two", "!${three.3}", "three.3", "${one}.15")
           .test();
       Assert.fail();
     } catch (NinjaFileFormatException e) {

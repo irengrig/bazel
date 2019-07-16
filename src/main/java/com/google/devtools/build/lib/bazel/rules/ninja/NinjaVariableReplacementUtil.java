@@ -109,7 +109,9 @@ public class NinjaVariableReplacementUtil {
         value = readOnly.get(name);
       }
       if (value == null) {
-        throw new NinjaFileFormatException(String.format("Variable '%s' is not defined.", name));
+        // TODO(ichern) should it be an option/warning?
+        value = "";
+        // throw new NinjaFileFormatException(String.format("Variable '%s' is not defined.", name));
       }
 
       sb.replace(startIdx, endIdx + 1, value);
