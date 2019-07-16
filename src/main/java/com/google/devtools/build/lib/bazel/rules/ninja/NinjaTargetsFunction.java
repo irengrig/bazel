@@ -17,7 +17,6 @@ package com.google.devtools.build.lib.bazel.rules.ninja;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
-import com.google.common.collect.ImmutableSortedMap;
 import com.google.common.collect.Lists;
 import com.google.devtools.build.lib.vfs.RootedPath;
 import com.google.devtools.build.skyframe.SkyFunction;
@@ -123,13 +122,23 @@ public class NinjaTargetsFunction implements SkyFunction {
       throw new NinjaFileFormatSkyFunctionException("Ninja target is missing command: " + header);
     }
     if ("phony".equals(command)) {
-      if (!target.getImplicitOutputs().isEmpty() || target.getOutputs().size() != 1) {
-        throw new NinjaFileFormatSkyFunctionException("Wrong phony target format: " + header);
+      if (!target.getImplicitOutputs().isEmpty()) {
+        throw new NinjaFileFormatSkyFunctionException(
+            "Phony target contains implicit outputs: " + header);
       }
-      builder.addAlias(target.getOutputs().get(0), target);
-    } else {
-      builder.addNinjaTarget(target);
+      if (target.getInputs().isEmpty()
+          && target.getImplicitInputs().isEmpty()
+          && target.getOrderOnlyInputs().isEmpty()) {
+        // Skip the target: it is a phony statement without inputs,
+        // declaring that the named output files can be non existent at build time
+        return;
+      }
+      if (target.getOutputs().size() > 1) {
+        throw new NinjaFileFormatSkyFunctionException(
+            "Phony target with several alias names: " + header);
+      }
     }
+    builder.addNinjaTarget(target);
   }
 
   private static void parseHeader(String header, NinjaTarget.Builder tBuilder)

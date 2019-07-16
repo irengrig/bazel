@@ -17,7 +17,6 @@ package com.google.devtools.build.lib.bazel.rules.ninja;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableSortedMap;
 import com.google.common.collect.Interner;
 import com.google.devtools.build.lib.concurrent.BlazeInterners;
 import com.google.devtools.build.lib.concurrent.ThreadSafety.ThreadSafe;
@@ -33,23 +32,16 @@ public class NinjaTargetsValue implements SkyValue {
   public static final SkyFunctionName NINJA_TARGETS =
       SkyFunctionName.createHermetic("NINJA_TARGETS");
   private final ImmutableList<NinjaTarget> targets;
-  private final ImmutableSortedMap<String, NinjaTarget> aliases;
   private final ImmutableList<String> defaults;
 
   public NinjaTargetsValue(ImmutableList<NinjaTarget> targets,
-      ImmutableSortedMap<String, NinjaTarget> aliases,
       ImmutableList<String> defaults) {
     this.targets = targets;
-    this.aliases = aliases;
     this.defaults = defaults;
   }
 
   public List<NinjaTarget> getTargets() {
     return targets;
-  }
-
-  public ImmutableSortedMap<String, NinjaTarget> getAliases() {
-    return aliases;
   }
 
   public ImmutableList<String> getDefaults() {
@@ -131,22 +123,15 @@ public class NinjaTargetsValue implements SkyValue {
 
   public static class Builder {
     private final ImmutableList.Builder<NinjaTarget> targetsBuilder;
-    private final ImmutableSortedMap.Builder<String, NinjaTarget> aliasesBuilder;
     private final ImmutableList.Builder<String> defaultsBuilder;
 
     private Builder() {
       targetsBuilder = new ImmutableList.Builder<>();
-      aliasesBuilder = ImmutableSortedMap.naturalOrder();
       defaultsBuilder = new ImmutableList.Builder<>();
     }
 
     public Builder addNinjaTarget(NinjaTarget action) {
       targetsBuilder.add(action);
-      return this;
-    }
-
-    public Builder addAlias(String alias, NinjaTarget target) {
-      aliasesBuilder.put(alias, target);
       return this;
     }
 
@@ -156,8 +141,7 @@ public class NinjaTargetsValue implements SkyValue {
     }
 
     public NinjaTargetsValue build() {
-      return new NinjaTargetsValue(targetsBuilder.build(), aliasesBuilder.build(),
-          defaultsBuilder.build());
+      return new NinjaTargetsValue(targetsBuilder.build(), defaultsBuilder.build());
     }
   }
 

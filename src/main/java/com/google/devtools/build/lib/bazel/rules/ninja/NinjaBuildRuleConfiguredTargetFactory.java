@@ -17,6 +17,7 @@ package com.google.devtools.build.lib.bazel.rules.ninja;
 
 import static com.google.devtools.build.lib.bazel.rules.ninja.NinjaVariableReplacementUtil.replaceVariablesInVariables;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -24,6 +25,8 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedMap;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import com.google.common.collect.Multimap;
+import com.google.common.collect.Multimaps;
 import com.google.common.collect.Sets;
 import com.google.devtools.build.lib.actions.Artifact;
 import com.google.devtools.build.lib.actions.ArtifactRoot;
@@ -66,11 +69,15 @@ import com.google.devtools.build.lib.vfs.UnixGlob;
 import com.google.devtools.build.skyframe.SkyFunction.Environment;
 import java.io.IOException;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.function.Consumer;
 import javax.annotation.Nullable;
 
 public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTargetFactory {
@@ -175,7 +182,8 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
     }
 
     // filter only targets, needed for output
-    targets = filterOnlyNeededTargets(executable, targets, requestedTargets);
+    // todo if export targets are not set, defaults should be used for filtering
+    targets = filterOnlyNeededTargetsAndReplaceAliases(executable, targets, requestedTargets);
 
     Artifact executableArtifact = null;
     for (NinjaTarget target : targets) {
@@ -237,7 +245,7 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
     return builder.build();
   }
 
-  private List<NinjaTarget> filterOnlyNeededTargets(PathFragment executable,
+  private List<NinjaTarget> filterOnlyNeededTargetsAndReplaceAliases(PathFragment executable,
       List<NinjaTarget> targets, Map<PathFragment, String> requestedTargets) {
     ArrayDeque<PathFragment> queue = new ArrayDeque<>();
     queue.addAll(requestedTargets.keySet());
@@ -283,7 +291,98 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
         }
       }
     }
-    return Lists.newArrayList(filteredTargets);
+
+    return replaceAliases(filteredTargets);
+  }
+
+  @VisibleForTesting
+  public static List<NinjaTarget> replaceAliases(Collection<NinjaTarget> filteredTargets) {
+    // now replace aliases
+    // todo we could also cache that
+    Multimap<PathFragment, PathFragment> inputsReplaceMap = Multimaps.newListMultimap(
+        Maps.newHashMap(), Lists::newArrayList
+    );
+
+    for (NinjaTarget ninjaTarget : filteredTargets) {
+      if ("phony".equals(ninjaTarget.getCommand())) {
+        PathFragment alias = PathFragment.create(ninjaTarget.getOutputs().get(0));
+        List<PathFragment> inputs = Lists.newArrayList();
+
+        Consumer<String> consumer = p -> inputs.add(PathFragment.create(p));
+        ninjaTarget.getInputs().forEach(consumer);
+        ninjaTarget.getImplicitInputs().forEach(consumer);
+        ninjaTarget.getOrderOnlyInputs().forEach(consumer);
+
+        inputsReplaceMap.putAll(alias, inputs);
+      }
+    }
+    // also replace in in replace map
+    ArrayList<PathFragment> copy = Lists.newArrayList(inputsReplaceMap.keys());
+    for (PathFragment alias : copy) {
+      Collection<PathFragment> inputs = inputsReplaceMap.get(alias);
+
+      for (PathFragment key : inputsReplaceMap.keys()) {
+        if (alias.equals(key)) {
+          // no self replace
+          continue;
+        }
+        List<PathFragment> fragments = (List<PathFragment>) inputsReplaceMap.get(key);
+        if (fragments.remove(alias)) {
+          fragments.addAll(inputs);
+        }
+      }
+    }
+    // we do not need aliases any more
+    filteredTargets.removeIf(ninjaTarget -> "phony".equals(ninjaTarget.getCommand()));
+
+    List<NinjaTarget> replacedAliases = Lists.newArrayListWithCapacity(filteredTargets.size());
+    for (NinjaTarget ninjaTarget : filteredTargets) {
+      ImmutableList<String> inputs = replaceAliases(ninjaTarget.getInputs(), inputsReplaceMap);
+      ImmutableList<String> implicitInputs = replaceAliases(ninjaTarget.getImplicitInputs(),
+          inputsReplaceMap);
+      ImmutableList<String> orderOnlyInputs = replaceAliases(ninjaTarget.getOrderOnlyInputs(),
+          inputsReplaceMap);
+      if (inputs == null && implicitInputs == null && orderOnlyInputs == null) {
+        replacedAliases.add(ninjaTarget);
+      } else {
+        NinjaTarget newTarget = new NinjaTarget(ninjaTarget.getCommand(),
+            selectNonNull(inputs, ninjaTarget.getInputs()),
+            selectNonNull(implicitInputs, ninjaTarget.getImplicitInputs()),
+            selectNonNull(orderOnlyInputs, ninjaTarget.getOrderOnlyInputs()),
+            ninjaTarget.getOutputs(),
+            ninjaTarget.getImplicitOutputs(),
+            ninjaTarget.getVariables());
+        replacedAliases.add(newTarget);
+      }
+    }
+
+    return replacedAliases;
+  }
+
+  private static ImmutableList<String> selectNonNull(@Nullable ImmutableList<String> filtered,
+      ImmutableList<String> defaultValue) {
+    if (filtered != null) {
+      return filtered;
+    } else {
+      return defaultValue;
+    }
+  }
+
+  @Nullable
+  private static ImmutableList<String> replaceAliases(ImmutableList<String> inputs,
+      Multimap<PathFragment, PathFragment> inputsReplaceMap) {
+    List<String> out = Lists.newArrayList();
+    boolean anythingReplaced = false;
+    for (String input : inputs) {
+      Collection<PathFragment> fragments = inputsReplaceMap.get(PathFragment.create(input));
+      if (fragments == null) {
+        out.add(input);
+      } else {
+        anythingReplaced = true;
+        fragments.forEach(pf -> out.add(pf.getPathString()));
+      }
+    }
+    return anythingReplaced ? ImmutableList.copyOf(out) : null;
   }
 
   private Map<PathFragment, Artifact> fillDepsMapping(RuleContext ruleContext)
@@ -393,14 +492,12 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
     List<NinjaTarget> targets = Lists.newArrayList();
     // todo do we need it at all?
     TreeSet<String> defaults = Sets.newTreeSet();
-    ImmutableSortedMap.Builder<String, NinjaTarget> aliases = ImmutableSortedMap.naturalOrder();
 
     for (NinjaTargetsValue.Key targetKey : ninjaTargetKeys) {
       NinjaTargetsValue chunkValue = Preconditions.checkNotNull(
           (NinjaTargetsValue) env.getValue(targetKey));
       targets.addAll(chunkValue.getTargets());
       defaults.addAll(chunkValue.getDefaults());
-      aliases.putAll(chunkValue.getAliases());
     }
     return targets;
   }

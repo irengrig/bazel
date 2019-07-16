@@ -174,21 +174,54 @@ public class NinjaTargetsFunctionTest {
   public void testPhony() throws Exception {
     NinjaTargetsValue.Builder builder = NinjaTargetsValue.builder();
     NinjaTargetsFunction.parseTargetExpression(
-        ImmutableList.of("build abc: phony very-long"), builder);
+        ImmutableList.of("build abc: phony very-long one-more"), builder);
     NinjaTargetsFunction.parseTargetExpression(
-        ImmutableList.of("build cde: phony | implicit"), builder);
+        ImmutableList.of("build cde: phony | implicit || order-only"), builder);
+    NinjaTargetsFunction.parseTargetExpression(
+        ImmutableList.of("build skip those targets: phony"), builder);
 
     NinjaTargetsValue value = builder.build();
-    ImmutableSortedMap<String, NinjaTarget> aliases = value.getAliases();
-    assertThat(aliases).hasSize(2);
+    List<NinjaTarget> targets = value.getTargets();
+    assertThat(targets).hasSize(2);
 
-    ImmutableSortedMap<String, NinjaTarget> map = ImmutableSortedMap.of(
-        "abc", NinjaTarget.builder()
-            .setCommand("phony").addOutputs("abc").addInputs("very-long").build(),
-        "cde", NinjaTarget.builder()
-            .setCommand("phony").addOutputs("cde").addImplicitInputs("implicit").build()
+    assertThat(targets).containsExactly(
+        NinjaTarget.builder()
+            .setCommand("phony")
+            .addOutputs("abc")
+            .addInputs("very-long", "one-more")
+            .build(),
+        NinjaTarget.builder()
+            .setCommand("phony")
+            .addOutputs("cde")
+            .addImplicitInputs("implicit")
+            .addOrderOnlyInputs("order-only")
+            .build()
     );
-    assertThat(aliases).containsExactlyEntriesIn(map);
+  }
+
+  @Test
+  public void testReplaceAliases() throws Exception {
+    NinjaTargetsValue.Builder builder = NinjaTargetsValue.builder();
+    NinjaTargetsFunction.parseTargetExpression(
+        ImmutableList.of("build abc: phony very-long one-more"), builder);
+    NinjaTargetsFunction.parseTargetExpression(
+        ImmutableList.of("build cde: phony | implicit || order-only"), builder);
+    NinjaTargetsFunction.parseTargetExpression(
+        ImmutableList.of("build result: some-command abc cde"), builder);
+
+    NinjaTargetsValue value = builder.build();
+    List<NinjaTarget> targets = Lists.newArrayList(value.getTargets());
+    assertThat(targets).hasSize(3);
+
+    List<NinjaTarget> replaced = NinjaBuildRuleConfiguredTargetFactory.replaceAliases(targets);
+    assertThat(replaced).hasSize(1);
+    assertThat(replaced).containsExactly(
+        NinjaTarget.builder()
+            .setCommand("some-command")
+            .addOutputs("result")
+            .addInputs("very-long", "one-more", "implicit", "order-only")
+            .build()
+    );
   }
 
   // Let's assume it's good enough for now.
