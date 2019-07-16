@@ -376,7 +376,7 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
     boolean anythingReplaced = false;
     for (String input : inputs) {
       Collection<PathFragment> fragments = inputsReplaceMap.get(PathFragment.create(input));
-      if (fragments == null) {
+      if (fragments == null || fragments.isEmpty()) {
         out.add(input);
       } else {
         anythingReplaced = true;
