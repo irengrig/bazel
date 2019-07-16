@@ -190,7 +190,8 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
       String command = target.getCommand();
       NinjaRule ninjaRule = rules.get(command);
       if (ninjaRule == null) {
-        ruleContext.getRuleErrorConsumer().throwWithRuleError("No such rule found: " + command);
+        ruleContext.getRuleErrorConsumer()
+            .throwWithRuleError("Ninja: no such rule found: " + command);
       }
       try {
         NestedSet<Artifact> filesToBuild = registerNinjaAction(
@@ -253,7 +254,7 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
       queue.add(executable);
     }
     if (queue.isEmpty()) {
-      return targets;
+      return replaceAliases(Lists.newArrayList(targets));
     }
 
     Set<NinjaTarget> filteredTargets = Sets.newHashSet();
@@ -321,7 +322,7 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
     for (PathFragment alias : copy) {
       Collection<PathFragment> inputs = inputsReplaceMap.get(alias);
 
-      for (PathFragment key : inputsReplaceMap.keys()) {
+      for (PathFragment key : copy) {
         if (alias.equals(key)) {
           // no self replace
           continue;
