@@ -54,6 +54,7 @@ public class NinjaFileHeaderBulkFunction implements SkyFunction {
         line.startsWith("rule ")
         || line.startsWith("pool ")
         || line.startsWith(" ")
+        || line.startsWith("#")
         || line.isEmpty());
     LinesConsumer includeStatements = new LinesConsumer(line -> line.startsWith("include ")
         || line.startsWith("subninja "));
