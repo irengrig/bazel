@@ -28,11 +28,13 @@ import com.google.common.collect.Maps;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Multimaps;
 import com.google.common.collect.Sets;
+import com.google.devtools.build.lib.actions.Action;
 import com.google.devtools.build.lib.actions.Artifact;
 import com.google.devtools.build.lib.actions.ArtifactRoot;
 import com.google.devtools.build.lib.actions.CommandLines;
 import com.google.devtools.build.lib.actions.CompositeRunfilesSupplier;
 import com.google.devtools.build.lib.actions.MutableActionGraph.ActionConflictException;
+import com.google.devtools.build.lib.actions.cache.ActionCache;
 import com.google.devtools.build.lib.analysis.AliasProvider;
 import com.google.devtools.build.lib.analysis.AnalysisEnvironment;
 import com.google.devtools.build.lib.analysis.BlazeDirectories;
@@ -71,7 +73,6 @@ import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -186,6 +187,8 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
     targets = filterOnlyNeededTargetsAndReplaceAliases(executable, targets, requestedTargets);
 
     Artifact executableArtifact = null;
+    // todo debug
+    Map<String, Action> debugMap = Maps.newHashMap();
     for (NinjaTarget target : targets) {
       String command = target.getCommand();
       NinjaRule ninjaRule = rules.get(command);
@@ -195,7 +198,7 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
       }
       try {
         NestedSet<Artifact> filesToBuild = registerNinjaAction(
-            ruleContext, rootsContext, shExecutable, target, ninjaRule, variables);
+            ruleContext, rootsContext, shExecutable, target, ninjaRule, variables, debugMap);
         if (executableArtifact == null || !requestedTargets.isEmpty()) {
           for (Artifact artifact : filesToBuild) {
             PathFragment currentPathFragment = artifact.getPath().asFragment();
@@ -220,6 +223,9 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
         return null;
       }
     }
+    // System.out.println("---------------- MAP -----------------");
+    // System.out.println("MAP: " + debugMap);
+    // System.out.println("================ MAP =================");
 
     Artifact ninjaLog = FileWriteAction.createFile(ruleContext, "ninja.log",
         "This should be lazy!", false);
@@ -534,7 +540,8 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
       PathFragment shExecutable,
       NinjaTarget target,
       NinjaRule rule,
-      ImmutableSortedMap<String, String> variables) throws NinjaFileFormatException, IOException {
+      ImmutableSortedMap<String, String> variables,
+      Map<String, Action> debugMap) throws NinjaFileFormatException, IOException {
 
     Map<String, String> parameters = Maps.newHashMap();
     rule.getParameters().forEach((key, value) -> parameters.put(key.name(), value));
@@ -599,17 +606,18 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
         ".ninjarule_script.sh");
 
     NestedSet<Artifact> filesToBuild = outputsBuilder.build();
-    ruleContext.registerAction(
-        new GenRuleAction(
-            ruleContext.getActionOwner(),
-            ImmutableList.copyOf(commandHelper.getResolvedTools()),
-            inputsBuilder.build(),
-            filesToBuild,
-            CommandLines.of(argv),
-            ruleContext.getConfiguration().getActionEnvironment(),
-            ImmutableMap.copyOf(createExecutionInfo(ruleContext)),
-            CompositeRunfilesSupplier.fromSuppliers(commandHelper.getToolsRunfilesSuppliers()),
-            "NinjaBuild"));
+    GenRuleAction action = new GenRuleAction(
+        ruleContext.getActionOwner(),
+        ImmutableList.copyOf(commandHelper.getResolvedTools()),
+        inputsBuilder.build(),
+        filesToBuild,
+        CommandLines.of(argv),
+        ruleContext.getConfiguration().getActionEnvironment(),
+        ImmutableMap.copyOf(createExecutionInfo(ruleContext)),
+        CompositeRunfilesSupplier.fromSuppliers(commandHelper.getToolsRunfilesSuppliers()),
+        "NinjaBuild");
+    debugMap.put(target.getOutputs().get(0), action);
+    ruleContext.registerAction(action);
     return filesToBuild;
   }
 
@@ -623,6 +631,7 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
 
   private static class RootsContext {
     private final PathPackageLocator pkgLocator;
+    // private final ArtifactRoot absoluteRoot;
     private Root workspaceRoot;
     private final Map<String, Artifact> artifactCache;
     private final FileSystem fs;
@@ -642,6 +651,7 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
       this.aliases = aliases;
       artifactCache = Maps.newHashMap();
       fs = pkgLocator.getOutputBase().getFileSystem();
+      //absoluteRoot = ArtifactRoot.asSourceRoot(Root.absoluteRoot(fs));
     }
 
     public ImmutableList<String> maybeReplaceAliases(ImmutableList<String> paths) {
@@ -679,14 +689,14 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
       }
 
       List<Path> list;
-      if (fsPath.isDirectory()) {
-        list = new UnixGlob.Builder(fsPath)
-            // .setFilesystemCalls(syscallCache) // todo
-            .addPattern("*")
-            .glob();
-      } else {
+      // if (fsPath.isDirectory()) {
+      //   list = new UnixGlob.Builder(fsPath)
+      //       // .setFilesystemCalls(syscallCache) // todo
+      //       .addPattern("*")
+      //       .glob();
+      // } else {
         list = ImmutableList.of(fsPath);
-      }
+      // }
 
       if (isInput) {
         Root sourceRoot = getSourceRoot(fragment, fsPath);
@@ -710,8 +720,14 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
           PathFragment.EMPTY_FRAGMENT);
       for (Path listPath : list) {
         Path rootPath = execRoot.getRoot().getRelative(execRoot.getExecPath());
-        Artifact artifact = analysisEnvironment
-            .getUnderWorkspaceArtifact(listPath.relativeTo(rootPath), execRoot);
+        Artifact artifact;
+        if (listPath.asFragment().startsWith(rootPath.asFragment())) {
+          artifact = analysisEnvironment
+              .getUnderWorkspaceArtifact(listPath.relativeTo(rootPath), execRoot);
+        } else {
+          artifact = analysisEnvironment
+              .getSourceArtifact(listPath.asFragment(), Root.absoluteRoot(fs));
+        }
         artifactCache.put(artifactPathString, artifact);
         builder.add(artifact);
       }
@@ -730,6 +746,9 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
 
     @Nullable
     private Root getSourceRoot(PathFragment fragment, Path fsPath) {
+      if (!fsPath.exists()) {
+        return null;
+      }
       for (PathFragment blacklistedPackage : blacklistedPackages) {
         if (fragment.startsWith(blacklistedPackage)) {
           return null;
