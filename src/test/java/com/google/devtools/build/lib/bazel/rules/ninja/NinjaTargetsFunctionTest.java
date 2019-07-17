@@ -19,6 +19,7 @@ import static com.google.common.truth.Truth.assertThat;
 import static org.junit.Assert.fail;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedMap;
 import com.google.common.collect.Lists;
 import com.google.devtools.build.lib.bazel.rules.ninja.NinjaTargetsFunction.Splitter;
@@ -30,7 +31,9 @@ import com.google.devtools.build.lib.vfs.RootedPath;
 import com.google.devtools.build.lib.vfs.util.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
+import java.util.function.Function;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
@@ -85,8 +88,10 @@ public class NinjaTargetsFunctionTest {
 
     try {
       new Splitter(";", true)
-          .head(expect("head", () -> {}))
-          .tail(expect("tail", () -> {})).accept("No separator");
+          .head(expect("head", () -> {
+          }))
+          .tail(expect("tail", () -> {
+          })).accept("No separator");
       fail("Expected NinjaFileFormatSkyFunctionException to be thrown.");
     } catch (NinjaFileFormatSkyFunctionException e) {
       // expected
@@ -113,7 +118,8 @@ public class NinjaTargetsFunctionTest {
 
   @Test
   public void testParseAllPartsNinjaBuildExpression() throws Exception {
-    ImmutableList<String> lines = ImmutableList.of("build out1 out2 | implOut1 implOut2 : command inp1 ${inp2} | implInp1 implInp2 || orderInp1 orderInp2");
+    ImmutableList<String> lines = ImmutableList
+        .of("build out1 out2 | implOut1 implOut2 : command inp1 ${inp2} | implInp1 implInp2 || orderInp1 orderInp2");
     NinjaTargetsValue.Builder builder = NinjaTargetsValue.builder();
     NinjaTargetsFunction.parseTargetExpression(lines, builder);
     NinjaTargetsValue value = builder.build();
@@ -136,9 +142,9 @@ public class NinjaTargetsFunctionTest {
             + " : $cc "
             + " out/inner/some-other-very-long.so "
             + " | ${some.other.tool1} ${some.other.tool2}",
-            // Header ends here
-            "    description = ${long-description-with-many-vars}",
-            "    args = $ --argument-with-space");
+        // Header ends here
+        "    description = ${long-description-with-many-vars}",
+        "    args = $ --argument-with-space");
     NinjaTargetsValue.Builder builder = NinjaTargetsValue.builder();
     NinjaTargetsFunction.parseTargetExpression(lines, builder);
     NinjaTargetsValue value = builder.build();
@@ -276,6 +282,67 @@ public class NinjaTargetsFunctionTest {
     List<String> outputs = Lists.newArrayList();
     value.getTargets().forEach(t -> outputs.addAll(t.getOutputs()));
     assertThat(outputs).containsExactly("out1", "out2");
+  }
+
+  @Test
+  public void testCaresExample() throws Exception {
+    String rulesText = "rule C_SHARED_LIBRARY_LINKER__c-ares\n"
+        + "  command = $PRE_LINK && /usr/bin/cc -fPIC $LANGUAGE_COMPILE_FLAGS $ARCH_FLAGS "
+        + "$LINK_FLAGS -shared $SONAME_FLAG$SONAME -o $TARGET_FILE $in $LINK_PATH $LINK_LIBRARIES "
+        + "&& $POST_BUILD\n"
+        + "  description = Linking C shared library $TARGET_FILE\n"
+        + "  restat = $RESTAT\n";
+    String targetsText =
+        "build lib/libcares.so.2.2.0: C_SHARED_LIBRARY_LINKER__c-ares "
+            + "CMakeFiles/c-ares.dir/ares__close_sockets.c.o "
+            + "CMakeFiles/c-ares.dir/ares__get_hostent.c.o CMakeFiles/c-ares.dir/ares__read_line.c.o "
+            + "CMakeFiles/c-ares.dir/ares__timeval.c.o CMakeFiles/c-ares.dir/ares_android.c.o "
+            + "CMakeFiles/c-ares.dir/ares_cancel.c.o CMakeFiles/c-ares.dir/ares_data.c.o "
+            + "CMakeFiles/c-ares.dir/ares_destroy.c.o CMakeFiles/c-ares.dir/ares_expand_name.c.o "
+            + "CMakeFiles/c-ares.dir/ares_expand_string.c.o CMakeFiles/c-ares.dir/ares_fds.c.o "
+            + "CMakeFiles/c-ares.dir/ares_free_hostent.c.o CMakeFiles/c-ares.dir/ares_free_string.c.o "
+            + "CMakeFiles/c-ares.dir/ares_getenv.c.o CMakeFiles/c-ares.dir/ares_gethostbyaddr.c.o "
+            + "CMakeFiles/c-ares.dir/ares_gethostbyname.c.o CMakeFiles/c-ares.dir/ares_getnameinfo.c.o "
+            + "CMakeFiles/c-ares.dir/ares_getsock.c.o CMakeFiles/c-ares.dir/ares_init.c.o "
+            + "CMakeFiles/c-ares.dir/ares_library_init.c.o CMakeFiles/c-ares.dir/ares_llist.c.o "
+            + "CMakeFiles/c-ares.dir/ares_mkquery.c.o CMakeFiles/c-ares.dir/ares_create_query.c.o "
+            + "CMakeFiles/c-ares.dir/ares_nowarn.c.o CMakeFiles/c-ares.dir/ares_options.c.o "
+            + "CMakeFiles/c-ares.dir/ares_parse_a_reply.c.o "
+            + "CMakeFiles/c-ares.dir/ares_parse_aaaa_reply.c.o "
+            + "CMakeFiles/c-ares.dir/ares_parse_mx_reply.c.o "
+            + "CMakeFiles/c-ares.dir/ares_parse_naptr_reply.c.o "
+            + "CMakeFiles/c-ares.dir/ares_parse_ns_reply.c.o CMakeFiles/c-ares.dir/ares_parse_ptr_reply.c.o CMakeFiles/c-ares.dir/ares_parse_soa_reply.c.o CMakeFiles/c-ares.dir/ares_parse_srv_reply.c.o CMakeFiles/c-ares.dir/ares_parse_txt_reply.c.o CMakeFiles/c-ares.dir/ares_platform.c.o CMakeFiles/c-ares.dir/ares_process.c.o CMakeFiles/c-ares.dir/ares_query.c.o CMakeFiles/c-ares.dir/ares_search.c.o CMakeFiles/c-ares.dir/ares_send.c.o CMakeFiles/c-ares.dir/ares_strcasecmp.c.o CMakeFiles/c-ares.dir/ares_strdup.c.o CMakeFiles/c-ares.dir/ares_strerror.c.o CMakeFiles/c-ares.dir/ares_timeout.c.o CMakeFiles/c-ares.dir/ares_version.c.o CMakeFiles/c-ares.dir/ares_writev.c.o CMakeFiles/c-ares.dir/bitncmp.c.o CMakeFiles/c-ares.dir/inet_net_pton.c.o CMakeFiles/c-ares.dir/inet_ntop.c.o CMakeFiles/c-ares.dir/windows_port.c.o\n"
+            + "  LINK_LIBRARIES = -lnsl -lrt\n"
+            + "  OBJECT_DIR = CMakeFiles/c-ares.dir\n"
+            + "  POST_BUILD = :\n"
+            + "  PRE_LINK = :\n"
+            + "  SONAME = libcares.so.2\n"
+            + "  SONAME_FLAG = -Wl,-soname,\n"
+            + "  TARGET_COMPILE_PDB = CMakeFiles/c-ares.dir/\n"
+            + "  TARGET_FILE = lib/libcares.so.2.2.0\n"
+            + "  TARGET_PDB = lib/libcares.pdb\n";
+
+    NinjaRulesValue ninjaRulesValue = NinjaRulesFunction.compute(Arrays.asList(rulesText.split("\n")));
+    NinjaTargetsValue.Builder builder = NinjaTargetsValue.builder();
+    NinjaTargetsFunction.parseTargetExpression(Arrays.asList(targetsText.split("\n")), builder);
+
+    List<NinjaTarget> targets = builder.build().getTargets();
+    assertThat(targets).hasSize(1);
+    ImmutableSortedMap<String, NinjaRule> rules = ninjaRulesValue.getRules();
+    assertThat(rules).hasSize(1);
+
+    String command = NinjaBuildRuleConfiguredTargetFactory
+        .replaceParameters(targets.get(0), rules.get("C_SHARED_LIBRARY_LINKER__c-ares"),
+            ImmutableSortedMap.of(),
+            Function.identity());
+
+    ImmutableSet<String> variables = ImmutableSet.of("LINK_LIBRARIES", "OBJECT_DIR", "POST_BUILD",
+        "PRE_LINK", "SONAME", "SONAME_FLAG", "TARGET_COMPILE_PDB", "TARGET_FILE", "TARGET_PDB");
+
+    for (String variable : variables) {
+      assertThat(command).doesNotContain(variable);
+    }
+    System.out.println("command: " + command);
   }
 
   private TokenProcessor expect(String text, Runnable r) {

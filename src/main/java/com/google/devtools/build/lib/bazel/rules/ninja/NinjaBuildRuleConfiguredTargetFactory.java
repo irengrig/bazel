@@ -34,7 +34,6 @@ import com.google.devtools.build.lib.actions.ArtifactRoot;
 import com.google.devtools.build.lib.actions.CommandLines;
 import com.google.devtools.build.lib.actions.CompositeRunfilesSupplier;
 import com.google.devtools.build.lib.actions.MutableActionGraph.ActionConflictException;
-import com.google.devtools.build.lib.actions.cache.ActionCache;
 import com.google.devtools.build.lib.analysis.AliasProvider;
 import com.google.devtools.build.lib.analysis.AnalysisEnvironment;
 import com.google.devtools.build.lib.analysis.BlazeDirectories;
@@ -67,7 +66,6 @@ import com.google.devtools.build.lib.vfs.Path;
 import com.google.devtools.build.lib.vfs.PathFragment;
 import com.google.devtools.build.lib.vfs.Root;
 import com.google.devtools.build.lib.vfs.RootedPath;
-import com.google.devtools.build.lib.vfs.UnixGlob;
 import com.google.devtools.build.skyframe.SkyFunction.Environment;
 import java.io.IOException;
 import java.util.ArrayDeque;
@@ -79,6 +77,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import javax.annotation.Nullable;
 
 public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTargetFactory {
@@ -543,18 +542,6 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
       ImmutableSortedMap<String, String> variables,
       Map<String, Action> debugMap) throws NinjaFileFormatException, IOException {
 
-    Map<String, String> parameters = Maps.newHashMap();
-    rule.getParameters().forEach((key, value) -> parameters.put(key.name(), value));
-    parameters.put(ParameterName.in.name(), String.join(" ", rootsContext.maybeReplaceAliases(target.getInputs())));
-    parameters.put(ParameterName.in_newline.name(), String.join("\n", rootsContext.maybeReplaceAliases(target.getInputs())));
-    parameters.put(ParameterName.out.name(), String.join(" ", rootsContext.maybeReplaceAliases(target.getOutputs())));
-
-    // Merge variable defined in target so that they override correctly.
-    parameters.putAll(target.getVariables());
-
-    ImmutableSortedMap<String, String> replacedParameters =
-        replaceVariablesInVariables(variables, ImmutableSortedMap.copyOf(parameters));
-
     NestedSetBuilder<Artifact> inputsBuilder = NestedSetBuilder.stableOrder();
 
     ImmutableMap.Builder<Label, NestedSet<Artifact>> labelMap = ImmutableMap.builder();
@@ -596,10 +583,7 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
         .build();
 
     // todo use description etc.
-    String command = replacedParameters.get(ParameterName.command.name());
-    for (Map.Entry<String, String> entry : ESCAPE_REPLACEMENTS.entrySet()) {
-      command = command.replace(entry.getKey(), entry.getValue());
-    }
+    String command = replaceParameters(target, rule, variables, rootsContext::maybeReplaceAliases);
     List<String> argv = commandHelper.buildCommandLine(shExecutable,
         command,
         inputsBuilder,
@@ -619,6 +603,29 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
     debugMap.put(target.getOutputs().get(0), action);
     ruleContext.registerAction(action);
     return filesToBuild;
+  }
+
+  @VisibleForTesting
+  public static String replaceParameters(NinjaTarget target, NinjaRule rule,
+      ImmutableSortedMap<String, String> variables,
+      Function<ImmutableList<String>, ImmutableList<String>> replacer)
+      throws NinjaFileFormatException {
+    Map<String, String> parameters = Maps.newHashMap();
+    rule.getParameters().forEach((key, value) -> parameters.put(key.name(), value));
+    parameters.put(ParameterName.in.name(), String.join(" ", replacer.apply(target.getInputs())));
+    parameters.put(ParameterName.in_newline.name(), String.join("\n", replacer.apply(target.getInputs())));
+    parameters.put(ParameterName.out.name(), String.join(" ", replacer.apply(target.getOutputs())));
+
+    // Merge variable defined in target so that they override correctly.
+    parameters.putAll(target.getVariables());
+
+    ImmutableSortedMap<String, String> replacedParameters = replaceVariablesInVariables(
+        variables, ImmutableSortedMap.copyOf(parameters));
+    String command = replacedParameters.get(ParameterName.command.name());
+    for (Map.Entry<String, String> entry : ESCAPE_REPLACEMENTS.entrySet()) {
+      command = command.replace(entry.getKey(), entry.getValue());
+    }
+    return command;
   }
 
   private static Map<String, String> createExecutionInfo(RuleContext ruleContext) {
