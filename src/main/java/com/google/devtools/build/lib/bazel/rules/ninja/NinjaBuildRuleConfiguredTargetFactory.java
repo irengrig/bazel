@@ -700,6 +700,9 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
 
       // todo better use path fragments for comparing paths
       if (isInput && !generatedFiles.contains(path)) {
+        if (fsPath.isDirectory()) {
+          return;
+        }
         Root sourceRoot = getSourceRoot(fragment, fsPath);
         if (sourceRoot != null) {
           builder.add(analysisEnvironment

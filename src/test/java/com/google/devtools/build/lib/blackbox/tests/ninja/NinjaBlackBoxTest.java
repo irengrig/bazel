@@ -321,6 +321,9 @@ public class NinjaBlackBoxTest extends AbstractBlackBoxTest {
     scriptPath.toFile().setExecutable(true);
     ProcessResult scriptResult = context()
         .runBinary(context().getWorkDir(), "bash", true, "-c", "./script.sh");
+    System.out.println("\n============= Configuring cares: ============\n");
+    System.out.println(scriptResult.outString());
+    System.out.println("\n=============================================\n");
 
     context().write("cares/WORKSPACE", "workspace(name = \"cares\")");
     context().write("cares/BUILD", "filegroup(name = \"all\", srcs = glob([\"**\"], exclude = [\"bazel-*\", \"bazel-*/**\"]), visibility = [\"//visibility:public\"])",
