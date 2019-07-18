@@ -361,10 +361,10 @@ public class NinjaBlackBoxTest extends AbstractBlackBoxTest {
   }
 
   private void assertBuildExecuted(ProcessResult result) {
-    assertThat(result.errString()).contains("INFO: From NinjaBuild:");
+    assertThat(result.errString()).contains("INFO: From Ninja: building ");
   }
 
   private void assertBuildCached(ProcessResult result) {
-    assertThat(result.errString()).doesNotContain("INFO: From NinjaBuild:");
+    assertThat(result.errString()).doesNotContain("INFO: From Ninja: building ");
   }
 }
