@@ -1,16 +1,17 @@
-// Copyright 2018 The Bazel Authors. All rights reserved.
+// Copyright 2019 The Bazel Authors. All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-// http://www.apache.org/licenses/LICENSE-2.0
+//    http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
 
 package com.google.devtools.build.lib.blackbox.framework;
 
@@ -42,7 +43,7 @@ import java.util.concurrent.TimeoutException;
 public final class BuilderRunner {
   private static final long DEFAULT_TIMEOUT_MILLIS = TimeUnit.SECONDS.toMillis(30);
 
-  private final Path workDir;
+  private Path workDir;
   private final Path binaryPath;
   private final Map<String, String> env;
   private final ExecutorService executorService;
@@ -82,6 +83,17 @@ public final class BuilderRunner {
     this.executorService = executorService;
     this.timeoutMillis = defaultTimeoutMillis;
     this.flags = Lists.newArrayList();
+  }
+
+  /**
+   * Sets working directory for the Bazel invocation.
+   *
+   * @param workingDirectory absolute path to the working directory
+   * @return this BuildRunner instance
+   */
+  public BuilderRunner withWorkingDirectory(Path workingDirectory) {
+    this.workDir = workingDirectory;
+    return this;
   }
 
   /**

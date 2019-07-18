@@ -304,6 +304,42 @@ public class NinjaBlackBoxTest extends AbstractBlackBoxTest {
     assertThat(PathUtils.readFile(ninjaLog)).containsExactly("This should be lazy!");
   }
 
+  @Test
+  public void testDoNotRunMeOnCIBuildCAres() throws Exception {
+    if (System.getenv("BUILDKITE") != null) {
+      return;
+    }
+    String prepareScript =
+        String.join("\n",
+            "curl -sSL https://github.com/c-ares/c-ares/archive/cares-1_15_0.tar.gz > cares.tar.gz",
+        "tar -xf cares.tar.gz",
+        "rm -f cares.tar.gz",
+        "mv c-ares-cares-1_15_0 cares",
+        "cd cares",
+        "cmake -GNinja");
+    Path scriptPath = context().write("script.sh", prepareScript);
+    scriptPath.toFile().setExecutable(true);
+    ProcessResult scriptResult = context()
+        .runBinary(context().getWorkDir(), "bash", true, "-c", "./script.sh");
+
+    context().write("cares/WORKSPACE", "workspace(name = \"cares\")");
+    context().write("cares/BUILD", "filegroup(name = \"all\", srcs = glob([\"**\"], exclude = [\"bazel-*\", \"bazel-*/**\"]), visibility = [\"//visibility:public\"])",
+        "ninja_build(name = \"ninja_target\",",
+        "            srcs = [\":all\"],",
+        "            build_ninja = \":build.ninja\",",
+        // this is important to NOT call ninja files regeneration
+        "            export_targets = {\"all\" : \"all_files\"}",
+        ")");
+
+    Path caresDir = context().getWorkDir().resolve("cares");
+    ProcessResult result = context().bazel()
+        .withWorkingDirectory(caresDir).build("//:ninja_target");
+    Path libraryPath = caresDir.resolve("lib/libcares.so");
+    assertThat(libraryPath.toFile().exists()).isTrue();
+    System.out.println("\n============= Building cares: ============\n");
+    System.out.println(result.errString());
+  }
+
   private void copyFileRule() throws IOException {
     String text = "def _impl(ctx):\n"
         + "  out = ctx.actions.declare_file('copy/' + ctx.file.source.basename)\n"
