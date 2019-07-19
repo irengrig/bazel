@@ -23,7 +23,6 @@ import com.google.devtools.build.lib.actions.ActionAnalysisMetadata;
 import com.google.devtools.build.lib.actions.ActionKeyContext;
 import com.google.devtools.build.lib.actions.ActionLookupValue;
 import com.google.devtools.build.lib.actions.Artifact;
-import com.google.devtools.build.lib.actions.Artifact.DerivedArtifact;
 import com.google.devtools.build.lib.actions.Artifact.SpecialArtifact;
 import com.google.devtools.build.lib.actions.ArtifactFactory;
 import com.google.devtools.build.lib.actions.ArtifactRoot;
@@ -262,14 +261,13 @@ public class CachingAnalysisEnvironment implements AnalysisEnvironment {
    * running with --experimental_extended_sanity_checks.
    */
   @SuppressWarnings("unchecked") // Cast of artifacts map's value to Pair.
-  private Artifact dedupAndTrackArtifactAndOrigin(
-      Artifact a, @Nullable Throwable e) {
+  private <T extends Artifact> T dedupAndTrackArtifactAndOrigin(T a, @Nullable Throwable e) {
     if (artifacts.containsKey(a)) {
       Object value = artifacts.get(a);
       if (e == null) {
-        return (Artifact) value;
+        return (T) value;
       } else {
-        return ((Pair<Artifact, String>) value).first;
+        return ((Pair<T, String>) value).first;
       }
     }
     if ((e != null)) {
@@ -300,7 +298,7 @@ public class CachingAnalysisEnvironment implements AnalysisEnvironment {
   public Artifact.DerivedArtifact getDerivedArtifact(
       PathFragment rootRelativePath, ArtifactRoot root, boolean contentBasedPath) {
     Preconditions.checkState(enabled);
-    return (DerivedArtifact) dedupAndTrackArtifactAndOrigin(
+    return dedupAndTrackArtifactAndOrigin(
         artifactFactory.getDerivedArtifact(rootRelativePath, root, getOwner(), contentBasedPath),
         extendedSanityChecks ? new Throwable() : null);
   }
@@ -326,7 +324,7 @@ public class CachingAnalysisEnvironment implements AnalysisEnvironment {
   public Artifact.DerivedArtifact getFilesetArtifact(
       PathFragment rootRelativePath, ArtifactRoot root) {
     Preconditions.checkState(enabled);
-    return (DerivedArtifact) dedupAndTrackArtifactAndOrigin(
+    return dedupAndTrackArtifactAndOrigin(
         artifactFactory.getFilesetArtifact(rootRelativePath, root, getOwner()),
         extendedSanityChecks ? new Throwable() : null);
   }

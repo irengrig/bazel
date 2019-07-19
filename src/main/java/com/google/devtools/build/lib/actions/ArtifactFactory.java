@@ -246,7 +246,7 @@ public class ArtifactFactory implements ArtifactResolver {
             root, root.getExecPath().getRelative(rootRelativePath), owner, null, contentBasedPath);
   }
 
-  public Artifact getUnderWorkspaceArtifact(
+  public Artifact.UnderWorkspaceArtifact getUnderWorkspaceArtifact(
       PathFragment rootRelativePath, ArtifactRoot root, ArtifactOwner owner) {
     // Weakened checks.
     Preconditions.checkArgument(!root.isSourceRoot());
