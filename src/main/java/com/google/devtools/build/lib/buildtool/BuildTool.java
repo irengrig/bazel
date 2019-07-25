@@ -1,4 +1,4 @@
-// Copyright 2014 The Bazel Authors. All rights reserved.
+// Copyright 2019 The Bazel Authors. All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -11,12 +11,15 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
 package com.google.devtools.build.lib.buildtool;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
+import com.google.common.base.Predicates;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.google.devtools.build.lib.actions.BuildFailedException;
 import com.google.devtools.build.lib.actions.TestExecException;
 import com.google.devtools.build.lib.analysis.AnalysisResult;
@@ -42,6 +45,7 @@ import com.google.devtools.build.lib.profiler.Profiler;
 import com.google.devtools.build.lib.profiler.SilentCloseable;
 import com.google.devtools.build.lib.runtime.BlazeRuntime;
 import com.google.devtools.build.lib.runtime.CommandEnvironment;
+import com.google.devtools.build.lib.skyframe.ConfiguredTargetKey;
 import com.google.devtools.build.lib.util.AbruptExitException;
 import com.google.devtools.build.lib.util.ExitCode;
 import com.google.devtools.build.lib.vfs.Path;
@@ -92,14 +96,13 @@ public class BuildTool {
    *
    * <p>During this function's execution, the actualTargets and successfulTargets fields of the
    * request object are set.
-   *
    * @param request the build request that this build tool is servicing, which specifies various
    *     options; during this method's execution, the actualTargets and successfulTargets fields of
    *     the request object are populated
    * @param result the build result that is the mutable result of this build
    * @param validator target validator
    */
-  public void buildTargets(BuildRequest request, BuildResult result, TargetValidator validator)
+  public ImmutableSet<ConfiguredTargetKey> buildTargets(BuildRequest request, BuildResult result, TargetValidator validator)
       throws BuildFailedException, InterruptedException, ViewCreationFailedException,
           TargetParsingException, LoadingFailedException, AbruptExitException,
           InvalidConfigurationException, TestExecException, PostAnalysisQueryCommandLineException {
@@ -174,6 +177,8 @@ public class BuildTool {
         }
       }
       Profiler.instance().markPhase(ProfilePhase.FINISH);
+
+      return analysisResult.getDelayedTargets();
     } catch (Error | RuntimeException e) {
       request
           .getOutErr()
@@ -265,7 +270,17 @@ public class BuildTool {
     Throwable catastrophe = null;
     ExitCode exitCode = ExitCode.BLAZE_INTERNAL_ERROR;
     try {
-      buildTargets(request, result, validator);
+      ImmutableSet<ConfiguredTargetKey> delayedTargetKeys = ImmutableSet.of();
+      while(delayedTargetKeys != null) {
+        // TODO(ichern) it is a hack
+        env.getBlazeWorkspace().getSkyframeExecutor().getDriverForTesting()
+            .getGraphForTesting().delete(Predicates.in(delayedTargetKeys));
+        delayedTargetKeys = buildTargets(request, result, validator);
+        // in case empty set is returned
+        if (delayedTargetKeys != null && delayedTargetKeys.isEmpty()) {
+          break;
+        }
+      }
       exitCode = ExitCode.SUCCESS;
     } catch (BuildFailedException e) {
       if (e.isErrorAlreadyShown()) {

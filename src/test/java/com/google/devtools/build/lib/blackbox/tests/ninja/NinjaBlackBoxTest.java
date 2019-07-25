@@ -59,6 +59,46 @@ public class NinjaBlackBoxTest extends AbstractBlackBoxTest {
   }
 
   @Test
+  public void testGeneratedFile() throws Exception {
+    copyFileRule();
+    context().write(".bazelignore", "out");
+    context().getWorkDir().resolve("out").toFile().mkdir();
+    context().write("name.txt", "Ninja");
+    context().write("repo.bzl",
+        "def _impl(rctx):",
+        "  rctx.file('build.ninja', \"\"\"rule echo",
+        "  command = echo \"Hello from $$(cat $in)!\">$out && echo \"One more command!\">> $out",
+        "",
+        "build out/hello.txt: echo name.txt",
+        "",
+        "default hello.txt\"\"\")",
+        "  rctx.file('BUILD', 'exports_files([\"build.ninja\"])')",
+        "generate_ninja = repository_rule(implementation = _impl)");
+    context().write("WORKSPACE",
+        "workspace(name = 'test')",
+        "load(':repo.bzl', 'generate_ninja')",
+        "generate_ninja(name = 'generated_ninja')");
+    context().write("BUILD",
+        "load(':debug.bzl', 'copy_file')",
+        "copy_file(name = 'build_copy', source = '@generated_ninja//:build.ninja')",
+        "ninja_build(name = 'first_ninja', ",
+        "srcs = [':build_copy', ':name.txt'],",
+        "build_ninja = ':build_copy')");
+
+    BuilderRunner bazel = context().bazel();
+    bazel.build("//:first_ninja");
+
+    Path outPath = context().getWorkDir().resolve("out/hello.txt");
+    assertThat(outPath.toFile().exists()).named(outPath.toString()).isTrue();
+    assertThat(PathUtils.readFile(outPath))
+        .containsExactly("Hello from Ninja!", "One more command!");
+
+    Path ninjaLog = context().resolveGenPath(bazel, "ninja.log");
+    assertThat(ninjaLog.toFile().exists()).named(ninjaLog.toString()).isTrue();
+    assertThat(PathUtils.readFile(ninjaLog)).containsExactly("This should be lazy!");
+  }
+
+  @Test
   public void testFilteringTargets() throws Exception {
     context().write(".bazelignore", "out");
     context().getWorkDir().resolve("out").toFile().mkdir();

@@ -1,4 +1,4 @@
-// Copyright 2014 The Bazel Authors. All rights reserved.
+// Copyright 2019 The Bazel Authors. All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -11,6 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
 
 package com.google.devtools.build.lib.analysis;
 
@@ -24,6 +25,8 @@ import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Sets;
 import com.google.common.eventbus.EventBus;
@@ -41,6 +44,7 @@ import com.google.devtools.build.lib.analysis.config.BuildConfigurationCollectio
 import com.google.devtools.build.lib.analysis.config.BuildOptions;
 import com.google.devtools.build.lib.analysis.config.ConfigurationResolver.TopLevelTargetsAndConfigsResult;
 import com.google.devtools.build.lib.analysis.config.InvalidConfigurationException;
+import com.google.devtools.build.lib.analysis.configuredtargets.RuleConfiguredTarget;
 import com.google.devtools.build.lib.analysis.constraints.TopLevelConstraintSemantics;
 import com.google.devtools.build.lib.analysis.test.CoverageReportActionFactory;
 import com.google.devtools.build.lib.analysis.test.CoverageReportActionFactory.CoverageReportActionsWrapper;
@@ -71,6 +75,7 @@ import com.google.devtools.build.lib.skyframe.BuildConfigurationValue;
 import com.google.devtools.build.lib.skyframe.ConfiguredTargetKey;
 import com.google.devtools.build.lib.skyframe.CoverageReportValue;
 import com.google.devtools.build.lib.skyframe.PrepareAnalysisPhaseValue;
+import com.google.devtools.build.lib.skyframe.RuleConfiguredTargetValue;
 import com.google.devtools.build.lib.skyframe.SkyframeAnalysisResult;
 import com.google.devtools.build.lib.skyframe.SkyframeBuildView;
 import com.google.devtools.build.lib.skyframe.SkyframeExecutor;
@@ -79,9 +84,12 @@ import com.google.devtools.build.lib.syntax.SkylarkImport;
 import com.google.devtools.build.lib.syntax.SkylarkImport.SkylarkImportSyntaxException;
 import com.google.devtools.build.lib.util.Pair;
 import com.google.devtools.build.lib.util.RegexFilter;
+import com.google.devtools.build.skyframe.SkyKey;
 import com.google.devtools.build.skyframe.WalkableGraph;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -462,6 +470,16 @@ public class BuildView {
       allTargetsToTest = filterTestsByTargets(configuredTargets, testsToRun);
     }
 
+    Pair<Collection<ConfiguredTarget>, List<ConfiguredTargetKey>> pair =
+        filterNonDelayedAnalysisResult(configurations, skyframeAnalysisResult);
+    ImmutableSet<ConfiguredTargetKey> delayedTargets = null;
+    if (pair != null) {
+      configuredTargets = Sets.newHashSet(pair.getFirst());
+      aspects = ImmutableSet.of();
+      allTargetsToTest = Collections.emptySet();
+      delayedTargets = ImmutableSet.copyOf(pair.getSecond());
+    }
+
     ArtifactsToOwnerLabels.Builder artifactsToOwnerLabelsBuilder =
         new ArtifactsToOwnerLabels.Builder();
     Set<ConfiguredTarget> parallelTests = new HashSet<>();
@@ -555,7 +573,67 @@ public class BuildView {
         topLevelOptions,
         skyframeAnalysisResult.getPackageRoots(),
         loadingResult.getWorkspaceName(),
-        topLevelTargetsWithConfigs.getTargetsAndConfigs());
+        topLevelTargetsWithConfigs.getTargetsAndConfigs(),
+        delayedTargets);
+  }
+
+  private Pair<Collection<ConfiguredTarget>, List<ConfiguredTargetKey>> filterNonDelayedAnalysisResult(
+      BuildConfigurationCollection configurations,
+      SkyframeAnalysisResult analysisResult) throws InterruptedException {
+    final WalkableGraph graph = analysisResult.getWalkableGraph();
+
+    Map<ConfiguredTargetKey, ConfiguredTarget> topLevelTargetsToBuild = Maps.newHashMap();
+    ImmutableList<ConfiguredTarget> configuredTargets = analysisResult.getConfiguredTargets();
+    ArrayDeque<Pair<ConfiguredTargetKey, ConfiguredTargetKey>> queue = new ArrayDeque<>();
+    for (BuildConfiguration configuration : configurations.getTargetConfigurations()) {
+      configuredTargets.forEach(ct -> {
+        ConfiguredTargetKey key = ConfiguredTargetKey.of(ct, configuration);
+        queue.add(Pair.of(key, key));
+        topLevelTargetsToBuild.put(key, ct);
+      });
+    }
+
+    List<Pair<ConfiguredTargetKey, ConfiguredTargetKey>> targetsForDelayedTargets =
+        Lists.newArrayList();
+    List<ConfiguredTargetKey> delayedTargets = Lists.newArrayList();
+    while (!queue.isEmpty()) {
+      Pair<ConfiguredTargetKey, ConfiguredTargetKey> pair = queue.removeFirst();
+      ConfiguredTargetKey key = pair.getSecond();
+      ConfiguredTargetKey topLevelTargetKey = pair.getFirst();
+      RuleConfiguredTargetValue targetValue = (RuleConfiguredTargetValue) graph.getValue(key);
+      ConfiguredTarget target = targetValue.getConfiguredTarget();
+      if (target instanceof RuleConfiguredTarget
+          && !((RuleConfiguredTarget) target).getRequiredPreEvaluatedTargets().isEmpty()) {
+        delayedTargets.add(key);
+        ImmutableSet<ConfiguredTargetKey> requiredTargets = ((RuleConfiguredTarget) target)
+            .getRequiredPreEvaluatedTargets();
+        for (ConfiguredTargetKey requiredKey : requiredTargets) {
+          targetsForDelayedTargets.add(Pair.of(topLevelTargetKey, requiredKey));
+        }
+      }
+    }
+    if (targetsForDelayedTargets.isEmpty()) {
+      return null;
+    }
+
+    for (Pair<ConfiguredTargetKey, ConfiguredTargetKey> pair : targetsForDelayedTargets) {
+      topLevelTargetsToBuild.remove(pair.getFirst());
+      topLevelTargetsToBuild.put(pair.getSecond(),
+          ((RuleConfiguredTargetValue) graph.getValue(pair.getSecond())).getConfiguredTarget());
+    }
+    return Pair.of(topLevelTargetsToBuild.values(), delayedTargets);
+  }
+
+  private Collection<ConfiguredTargetKey> getTargets(Collection<Iterable<SkyKey>> keys) {
+    ArrayList<ConfiguredTargetKey> result = Lists.newArrayList();
+    for (Iterable<SkyKey> iterable : keys) {
+      for (SkyKey sk : iterable) {
+        if (sk instanceof ConfiguredTargetKey) {
+          result.add((ConfiguredTargetKey) sk);
+        }
+      }
+    }
+    return result;
   }
 
   /**

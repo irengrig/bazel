@@ -1,4 +1,4 @@
-// Copyright 2018 The Bazel Authors. All rights reserved.
+// Copyright 2019 The Bazel Authors. All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -11,6 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
 package com.google.devtools.build.lib.buildtool;
 
 import com.google.common.base.Stopwatch;
@@ -76,7 +77,9 @@ public final class AnalysisPhaseRunner {
     try (SilentCloseable c = Profiler.instance().profile("evaluateTargetPatterns")) {
       loadingResult = evaluateTargetPatterns(request, validator);
     }
-    env.setWorkspaceName(loadingResult.getWorkspaceName());
+    if (!env.isWorkspaceNameSet()) {
+      env.setWorkspaceName(loadingResult.getWorkspaceName());
+    }
 
     // Compute the heuristic instrumentation filter if needed.
     if (request.needsInstrumentationFilter()) {

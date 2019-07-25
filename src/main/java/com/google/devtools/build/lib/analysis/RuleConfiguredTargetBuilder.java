@@ -1,4 +1,4 @@
-// Copyright 2014 The Bazel Authors. All rights reserved.
+// Copyright 2019 The Bazel Authors. All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -11,6 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
 package com.google.devtools.build.lib.analysis;
 
 import static com.google.devtools.build.lib.analysis.ExtraActionUtils.createExtraActionProvider;
@@ -51,6 +52,7 @@ import com.google.devtools.build.lib.packages.NativeProvider;
 import com.google.devtools.build.lib.packages.Provider;
 import com.google.devtools.build.lib.packages.Rule;
 import com.google.devtools.build.lib.packages.TargetUtils;
+import com.google.devtools.build.lib.skyframe.ConfiguredTargetKey;
 import com.google.devtools.build.lib.syntax.EvalException;
 import com.google.devtools.build.lib.syntax.Type;
 import com.google.devtools.build.lib.syntax.Type.LabelClass;
@@ -81,11 +83,15 @@ public final class RuleConfiguredTargetBuilder {
   private RunfilesSupport runfilesSupport;
   private Artifact executable;
   private ImmutableSet<ActionAnalysisMetadata> actionsWithoutExtraAction = ImmutableSet.of();
+  private final ImmutableSet.Builder<ConfiguredTargetKey> requiredPreEvaluatedTargetsBuilder;
+  private final ImmutableSet.Builder<Artifact> requiredPreEvaluatedArtifactsBuilder;
 
   public RuleConfiguredTargetBuilder(RuleContext ruleContext) {
     this.ruleContext = ruleContext;
     add(LicensesProvider.class, LicensesProviderImpl.of(ruleContext));
     add(VisibilityProvider.class, new VisibilityProviderImpl(ruleContext.getVisibility()));
+    requiredPreEvaluatedTargetsBuilder = ImmutableSet.builder();
+    requiredPreEvaluatedArtifactsBuilder = ImmutableSet.builder();
   }
 
   /**
@@ -233,7 +239,9 @@ public final class RuleConfiguredTargetBuilder {
         ruleContext,
         providers,
         generatingActions.getActions(),
-        generatingActions.getArtifactsByOutputLabel());
+        generatingActions.getArtifactsByOutputLabel(),
+        requiredPreEvaluatedTargetsBuilder.build(),
+        requiredPreEvaluatedArtifactsBuilder.build());
   }
 
   private NestedSet<Label> transitiveLabels() {
@@ -521,6 +529,16 @@ public final class RuleConfiguredTargetBuilder {
   public RuleConfiguredTargetBuilder setActionsWithoutExtraAction(
       ImmutableSet<ActionAnalysisMetadata> actions) {
     this.actionsWithoutExtraAction = actions;
+    return this;
+  }
+
+  public RuleConfiguredTargetBuilder requirePrebuiltArtifacts(Artifact... artifacts) {
+    requiredPreEvaluatedArtifactsBuilder.add(artifacts);
+    return this;
+  }
+
+  public RuleConfiguredTargetBuilder requirePrebuiltTargets(ConfiguredTargetKey... targets) {
+    requiredPreEvaluatedTargetsBuilder.add(targets);
     return this;
   }
 

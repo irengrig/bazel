@@ -1,4 +1,4 @@
-// Copyright 2014 The Bazel Authors. All rights reserved.
+// Copyright 2019 The Bazel Authors. All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -11,6 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
 package com.google.devtools.build.lib.skyframe;
 
 import static com.google.devtools.build.lib.concurrent.Uninterruptibles.callUninterruptibly;
@@ -701,8 +702,10 @@ public abstract class SkyframeExecutor<T extends BuildDriver> implements Walkabl
 
   /** Notify listeners about changed files, and release any associated memory afterwards. */
   public void drainChangedFiles() {
-    incrementalBuildMonitor.alertListeners(getEventBus());
-    incrementalBuildMonitor = null;
+    if (incrementalBuildMonitor != null) {
+      incrementalBuildMonitor.alertListeners(getEventBus());
+      incrementalBuildMonitor = null;
+    }
   }
 
   @VisibleForTesting

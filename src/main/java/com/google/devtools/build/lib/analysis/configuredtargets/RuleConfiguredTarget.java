@@ -1,4 +1,4 @@
-// Copyright 2014 The Bazel Authors. All rights reserved.
+// Copyright 2019 The Bazel Authors. All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -11,6 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
 package com.google.devtools.build.lib.analysis.configuredtargets;
 
 import com.google.common.base.Joiner;
@@ -97,6 +98,8 @@ public final class RuleConfiguredTarget extends AbstractConfiguredTarget {
   private final ImmutableList<ActionAnalysisMetadata> actions;
   // TODO(b/133160730): can we only populate this map for outputs that have labels?
   private final ImmutableMap<Label, Artifact> artifactsByOutputLabel;
+  private final ImmutableSet<ConfiguredTargetKey> requiredPreEvaluatedTargets;
+  private final ImmutableSet<Artifact> requiredPreEvaluatedArtifacts;
 
   @Instantiator
   @VisibleForSerialization
@@ -109,7 +112,9 @@ public final class RuleConfiguredTarget extends AbstractConfiguredTarget {
       ImmutableSet<ConfiguredTargetKey> implicitDeps,
       String ruleClassString,
       ImmutableList<ActionAnalysisMetadata> actions,
-      ImmutableMap<Label, Artifact> artifactsByOutputLabel) {
+      ImmutableMap<Label, Artifact> artifactsByOutputLabel,
+      ImmutableSet<ConfiguredTargetKey> requiredPreEvaluatedTargets,
+      ImmutableSet<Artifact> requiredPreEvaluatedArtifacts) {
     super(label, configurationKey, visibility);
     this.artifactsByOutputLabel = artifactsByOutputLabel;
 
@@ -134,13 +139,17 @@ public final class RuleConfiguredTarget extends AbstractConfiguredTarget {
     this.implicitDeps = IMPLICIT_DEPS_INTERNER.intern(implicitDeps);
     this.ruleClassString = ruleClassString;
     this.actions = actions;
+    this.requiredPreEvaluatedTargets = requiredPreEvaluatedTargets;
+    this.requiredPreEvaluatedArtifacts = requiredPreEvaluatedArtifacts;
   }
 
   public RuleConfiguredTarget(
       RuleContext ruleContext,
       TransitiveInfoProviderMap providers,
       ImmutableList<ActionAnalysisMetadata> actions,
-      ImmutableMap<Label, Artifact> artifactsByOutputLabel) {
+      ImmutableMap<Label, Artifact> artifactsByOutputLabel,
+      ImmutableSet<ConfiguredTargetKey> requiredPreEvaluatedTargets,
+      ImmutableSet<Artifact> requiredPreEvaluatedArtifacts) {
     this(
         ruleContext.getLabel(),
         ruleContext.getConfigurationKey(),
@@ -150,7 +159,9 @@ public final class RuleConfiguredTarget extends AbstractConfiguredTarget {
         Util.findImplicitDeps(ruleContext),
         ruleContext.getRule().getRuleClass(),
         actions,
-        artifactsByOutputLabel);
+        artifactsByOutputLabel,
+        requiredPreEvaluatedTargets,
+        requiredPreEvaluatedArtifacts);
 
     // If this rule is the run_under target, then check that we have an executable; note that
     // run_under is only set in the target configuration, and the target must also be analyzed for
@@ -268,5 +279,13 @@ public final class RuleConfiguredTarget extends AbstractConfiguredTarget {
         outputLabel,
         this,
         this.artifactsByOutputLabel);
+  }
+
+  public ImmutableSet<ConfiguredTargetKey> getRequiredPreEvaluatedTargets() {
+    return requiredPreEvaluatedTargets;
+  }
+
+  public ImmutableSet<Artifact> getRequiredPreEvaluatedArtifacts() {
+    return requiredPreEvaluatedArtifacts;
   }
 }

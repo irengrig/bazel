@@ -48,16 +48,19 @@ import com.google.devtools.build.lib.analysis.RunfilesProvider;
 import com.google.devtools.build.lib.analysis.ShToolchain;
 import com.google.devtools.build.lib.analysis.TransitiveInfoCollection;
 import com.google.devtools.build.lib.analysis.actions.FileWriteAction;
+import com.google.devtools.build.lib.analysis.configuredtargets.RuleConfiguredTarget;
 import com.google.devtools.build.lib.analysis.configuredtargets.RuleConfiguredTarget.Mode;
 import com.google.devtools.build.lib.bazel.rules.ninja.NinjaRule.ParameterName;
 import com.google.devtools.build.lib.cmdline.Label;
 import com.google.devtools.build.lib.collect.nestedset.NestedSet;
 import com.google.devtools.build.lib.collect.nestedset.NestedSetBuilder;
+import com.google.devtools.build.lib.collect.nestedset.Order;
 import com.google.devtools.build.lib.packages.BuildType;
 import com.google.devtools.build.lib.packages.TargetUtils;
 import com.google.devtools.build.lib.pkgcache.PathPackageLocator;
 import com.google.devtools.build.lib.rules.genrule.GenRuleAction;
 import com.google.devtools.build.lib.skyframe.BlacklistedPackagePrefixesValue;
+import com.google.devtools.build.lib.skyframe.ConfiguredTargetKey;
 import com.google.devtools.build.lib.skyframe.PrecomputedValue;
 import com.google.devtools.build.lib.syntax.Type;
 import com.google.devtools.build.lib.vfs.FileSystem;
@@ -98,13 +101,41 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
   @Override
   public ConfiguredTarget create(RuleContext ruleContext)
       throws InterruptedException, RuleErrorException, ActionConflictException {
-    Artifact srcArtifact = ruleContext.getPrerequisiteArtifact("build_ninja", Mode.TARGET);
-    RootedPath rootedPath = getRootedPath(srcArtifact);
-    PathFragment executable = PathFragment.create(ruleContext.attributes().get("executable_target",
-        Type.STRING));
-
     AnalysisEnvironment analysisEnvironment = ruleContext.getAnalysisEnvironment();
     Environment env = analysisEnvironment.getSkyframeEnv();
+
+    // TODO(ichern) check other included files should also be performed;
+    // TODO(ichern) however, probably the same target will generate all of them.
+    Artifact srcArtifact = ruleContext.getPrerequisiteArtifact("build_ninja", Mode.TARGET);
+    RootedPath rootedPath = getRootedPath(srcArtifact);
+
+    if (!rootedPath.asPath().exists()) {
+      RunfilesProvider runfilesProvider = RunfilesProvider.withData(
+          // No runfiles provided if not a data dependency.
+          Runfiles.EMPTY,
+          Runfiles.EMPTY);
+
+      List<? extends TransitiveInfoCollection> transitiveInfoCollections =
+          ruleContext.getConfiguredTargetMap().get("srcs");
+      List<ConfiguredTargetKey> targetKeys = Lists.newArrayList();
+      for (TransitiveInfoCollection collection : transitiveInfoCollections) {
+        if (collection instanceof RuleConfiguredTarget) {
+          // TODO(ichern) is host configuration hardcoded, maybe should not be
+          targetKeys.add(ConfiguredTargetKey.of(collection.getLabel(), collection.getConfigurationKey(), false));
+        }
+      }
+
+      return new RuleConfiguredTargetBuilder(ruleContext)
+          .setFilesToBuild(NestedSetBuilder.create(Order.STABLE_ORDER))
+          .setRunfilesSupport(null, null)
+          .addProvider(RunfilesProvider.class, runfilesProvider)
+          .requirePrebuiltArtifacts(srcArtifact)
+          .requirePrebuiltTargets(targetKeys.toArray(new ConfiguredTargetKey[0]))
+          .build();
+    }
+
+    PathFragment executable = PathFragment.create(ruleContext.attributes().get("executable_target",
+        Type.STRING));
 
     List<NinjaTargetsValue> bulkValues = Lists.newArrayList();
     List<NinjaTargetsValue.Key> keys = Lists.newArrayList();
@@ -478,8 +509,9 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
             + includedPath);
       }
 
+      // TODO(ichern) ends-with is bad here, should be more exact, like equals + check the exec root
       Optional<Artifact> artifact = srcs.list().stream()
-          .filter(a -> a.getExecPath().equals(includedPath)).findFirst();
+          .filter(a -> a.getExecPath().endsWith(includedPath)).findFirst();
       if (artifact.isPresent()) {
         result.add(getRootedPath(artifact.get()));
       } else {

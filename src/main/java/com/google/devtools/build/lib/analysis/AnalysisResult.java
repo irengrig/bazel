@@ -1,4 +1,4 @@
-// Copyright 2018 The Bazel Authors. All rights reserved.
+// Copyright 2019 The Bazel Authors. All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -11,6 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
 
 package com.google.devtools.build.lib.analysis;
 
@@ -20,6 +21,7 @@ import com.google.devtools.build.lib.actions.ActionGraph;
 import com.google.devtools.build.lib.actions.PackageRoots;
 import com.google.devtools.build.lib.analysis.config.BuildConfigurationCollection;
 import com.google.devtools.build.lib.skyframe.AspectValue;
+import com.google.devtools.build.lib.skyframe.ConfiguredTargetKey;
 import java.util.Collection;
 import javax.annotation.Nullable;
 
@@ -41,6 +43,7 @@ public final class AnalysisResult {
   private final PackageRoots packageRoots;
   private final String workspaceName;
   private final Collection<TargetAndConfiguration> topLevelTargetsWithConfigs;
+  private final ImmutableSet<ConfiguredTargetKey> delayedTargets;
 
   AnalysisResult(
       BuildConfigurationCollection configurations,
@@ -56,7 +59,8 @@ public final class AnalysisResult {
       TopLevelArtifactContext topLevelContext,
       PackageRoots packageRoots,
       String workspaceName,
-      Collection<TargetAndConfiguration> topLevelTargetsWithConfigs) {
+      Collection<TargetAndConfiguration> topLevelTargetsWithConfigs,
+      ImmutableSet<ConfiguredTargetKey> delayedTargets) {
     this.configurations = configurations;
     this.targetsToBuild = ImmutableSet.copyOf(targetsToBuild);
     this.aspects = aspects;
@@ -71,6 +75,7 @@ public final class AnalysisResult {
     this.packageRoots = packageRoots;
     this.workspaceName = workspaceName;
     this.topLevelTargetsWithConfigs = topLevelTargetsWithConfigs;
+    this.delayedTargets = delayedTargets;
   }
 
   public BuildConfigurationCollection getConfigurationCollection() {
@@ -158,5 +163,13 @@ public final class AnalysisResult {
 
   public Collection<TargetAndConfiguration> getTopLevelTargetsWithConfigs() {
     return topLevelTargetsWithConfigs;
+  }
+
+  public boolean hasDelayedTargets() {
+    return delayedTargets != null && !delayedTargets.isEmpty();
+  }
+
+  public ImmutableSet<ConfiguredTargetKey> getDelayedTargets() {
+    return delayedTargets;
   }
 }
