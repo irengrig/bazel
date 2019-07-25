@@ -237,7 +237,11 @@ public class NinjaTargetsFunctionTest {
     List<String> lines = Lists.newArrayList(
         "some = stuff to be skipped",
         "build out1 out2 | implOut1 implOut2 : command inp1 ${inp2} | implInp1 implInp2 "
-            + "|| orderInp1 orderInp2");
+            + "|| orderInp1 orderInp2",
+        "cc     = clang",
+        "cflags = -Weverything",
+        "other = one two "
+        );
     // generate more contents
     for (int i = 0; i < 1000; i++) {
       lines.add("default abc" + i);
@@ -248,7 +252,7 @@ public class NinjaTargetsFunctionTest {
     RootedPath rootedPath = RootedPath.toRootedPath(root,
         PathFragment.create(buildNinja.toString()));
 
-    NinjaTargetsValue.Key key = NinjaTargetsValue.Key.create(rootedPath, 0, 0, 0);
+    NinjaTargetsValue.Key key = NinjaTargetsValue.Key.create(rootedPath, 0, 0, -1);
     NinjaTargetsValue.Builder builder = NinjaTargetsValue.builder();
     NinjaTargetsFunction.parseFileFragmentForNinjaTargets(key, rootedPath, builder);
 
@@ -257,6 +261,13 @@ public class NinjaTargetsFunctionTest {
     assertThat(value.getTargets().get(0).getCommand()).isEqualTo("command");
 
     assertThat(value.getDefaults()).hasSize(1000);
+
+    ImmutableSortedMap.Builder<String, String> vBuilder = ImmutableSortedMap.naturalOrder();
+    vBuilder.put("cc", "clang");
+    vBuilder.put("cflags", "-Weverything");
+    vBuilder.put("other", "one two");
+    vBuilder.put("some", "stuff to be skipped");
+    assertThat(value.getVariables()).containsExactlyEntriesIn(vBuilder.build());
   }
 
   @Test
@@ -273,7 +284,7 @@ public class NinjaTargetsFunctionTest {
     RootedPath rootedPath = RootedPath.toRootedPath(root,
         PathFragment.create(buildNinja.toString()));
 
-    NinjaTargetsValue.Key key = NinjaTargetsValue.Key.create(rootedPath, 0, 0, 0);
+    NinjaTargetsValue.Key key = NinjaTargetsValue.Key.create(rootedPath, 0, 0, -1);
     NinjaTargetsValue.Builder builder = NinjaTargetsValue.builder();
     NinjaTargetsFunction.parseFileFragmentForNinjaTargets(key, rootedPath, builder);
 
@@ -322,13 +333,14 @@ public class NinjaTargetsFunctionTest {
             + "  TARGET_FILE = lib/libcares.so.2.2.0\n"
             + "  TARGET_PDB = lib/libcares.pdb\n";
 
-    NinjaRulesValue ninjaRulesValue = NinjaRulesFunction.compute(Arrays.asList(rulesText.split("\n")));
     NinjaTargetsValue.Builder builder = NinjaTargetsValue.builder();
-    NinjaTargetsFunction.parseTargetExpression(Arrays.asList(targetsText.split("\n")), builder);
+    NinjaTargetsFunction.parseTargetExpression(Arrays.asList((rulesText).split("\n")), builder);
+    NinjaTargetsFunction.parseTargetExpression(Arrays.asList((targetsText).split("\n")), builder);
 
-    List<NinjaTarget> targets = builder.build().getTargets();
+    NinjaTargetsValue ninjaTargetsValue = builder.build();
+    List<NinjaTarget> targets = ninjaTargetsValue.getTargets();
     assertThat(targets).hasSize(1);
-    ImmutableSortedMap<String, NinjaRule> rules = ninjaRulesValue.getRules();
+    ImmutableSortedMap<String, NinjaRule> rules = ninjaTargetsValue.getRules();
     assertThat(rules).hasSize(1);
 
     String command = NinjaBuildRuleConfiguredTargetFactory

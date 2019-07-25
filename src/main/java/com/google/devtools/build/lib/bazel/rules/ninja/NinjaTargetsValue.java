@@ -17,6 +17,7 @@ package com.google.devtools.build.lib.bazel.rules.ninja;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSortedMap;
 import com.google.common.collect.Interner;
 import com.google.devtools.build.lib.concurrent.BlazeInterners;
 import com.google.devtools.build.lib.concurrent.ThreadSafety.ThreadSafe;
@@ -31,12 +32,22 @@ import java.util.Objects;
 public class NinjaTargetsValue implements SkyValue {
   public static final SkyFunctionName NINJA_TARGETS =
       SkyFunctionName.createHermetic("NINJA_TARGETS");
+  private final ImmutableList<String> includeStatements;
+  private final ImmutableSortedMap<String, String> variables;
+  private final ImmutableSortedMap<String, NinjaRule> rules;
   private final ImmutableList<NinjaTarget> targets;
   private final ImmutableList<String> defaults;
 
-  public NinjaTargetsValue(ImmutableList<NinjaTarget> targets,
+  public NinjaTargetsValue(
+      ImmutableList<String> includeStatements,
+      ImmutableList<NinjaTarget> targets,
+      ImmutableSortedMap<String, String> variables,
+      ImmutableSortedMap<String, NinjaRule> rules,
       ImmutableList<String> defaults) {
+    this.includeStatements = includeStatements;
     this.targets = targets;
+    this.variables = variables;
+    this.rules = rules;
     this.defaults = defaults;
   }
 
@@ -48,10 +59,22 @@ public class NinjaTargetsValue implements SkyValue {
     return defaults;
   }
 
+  public ImmutableList<String> getIncludeStatements() {
+    return includeStatements;
+  }
+
+  public ImmutableSortedMap<String, String> getVariables() {
+    return variables;
+  }
+
+  public ImmutableSortedMap<String, NinjaRule> getRules() {
+    return rules;
+  }
+
   @VisibleForTesting
   @ThreadSafe
-  public static Key key(RootedPath ninjaFilePath, int chunkNumber, long bufferStart, int lineStart) {
-    return Key.create(ninjaFilePath, chunkNumber, bufferStart, lineStart);
+  public static Key key(RootedPath ninjaFilePath, int chunkNumber, long bufferStart, int size) {
+    return Key.create(ninjaFilePath, chunkNumber, bufferStart, size);
   }
 
   @AutoCodec.VisibleForSerialization
@@ -62,13 +85,13 @@ public class NinjaTargetsValue implements SkyValue {
     private final RootedPath path;
     private final int idx;
     private final long bufferStart;
-    private final int lineStart;
+    private final int size;
 
-    private Key(RootedPath path, int idx, long bufferStart, int lineStart) {
+    private Key(RootedPath path, int idx, long bufferStart, int size) {
       this.path = path;
       this.idx = idx;
       this.bufferStart = bufferStart;
-      this.lineStart = lineStart;
+      this.size = size;
     }
 
     public RootedPath getPath() {
@@ -83,14 +106,14 @@ public class NinjaTargetsValue implements SkyValue {
       return bufferStart;
     }
 
-    public int getLineStart() {
-      return lineStart;
+    public int getSize() {
+      return size;
     }
 
     @AutoCodec.VisibleForSerialization
     @AutoCodec.Instantiator
-    static Key create(RootedPath arg, int idx, long bufferStart, int lineStart) {
-      return interner.intern(new Key(arg, idx, bufferStart, lineStart));
+    static Key create(RootedPath arg, int idx, long bufferStart, int size) {
+      return interner.intern(new Key(arg, idx, bufferStart, size));
     }
 
     @Override
@@ -108,12 +131,13 @@ public class NinjaTargetsValue implements SkyValue {
       }
       Key key = (Key) o;
       return idx == key.idx &&
-          Objects.equals(path, key.path);
+          size == key.size &&
+          path.equals(key.path);
     }
 
     @Override
     public int hashCode() {
-      return Objects.hash(path, idx);
+      return Objects.hash(path, idx, size);
     }
   }
 
@@ -122,10 +146,16 @@ public class NinjaTargetsValue implements SkyValue {
   }
 
   public static class Builder {
+    private final ImmutableList.Builder<String> includeStatementsBuilder;
+    private final ImmutableSortedMap.Builder<String, String> variablesBuilder;
+    private final ImmutableSortedMap.Builder<String, NinjaRule> rulesBuilder;
     private final ImmutableList.Builder<NinjaTarget> targetsBuilder;
     private final ImmutableList.Builder<String> defaultsBuilder;
 
     private Builder() {
+      includeStatementsBuilder = new ImmutableList.Builder<>();
+      variablesBuilder = ImmutableSortedMap.naturalOrder();
+      rulesBuilder = ImmutableSortedMap.naturalOrder();
       targetsBuilder = new ImmutableList.Builder<>();
       defaultsBuilder = new ImmutableList.Builder<>();
     }
@@ -140,8 +170,24 @@ public class NinjaTargetsValue implements SkyValue {
       return this;
     }
 
+    public Builder addInclude(String includeText) {
+      includeStatementsBuilder.add(includeText);
+      return this;
+    }
+
+    public Builder addVariable(String name, String value) {
+      variablesBuilder.put(name, value);
+      return this;
+    }
+
+    public Builder addRule(String name, NinjaRule ninjaRule) {
+      rulesBuilder.put(name, ninjaRule);
+      return this;
+    }
+
     public NinjaTargetsValue build() {
-      return new NinjaTargetsValue(targetsBuilder.build(), defaultsBuilder.build());
+      return new NinjaTargetsValue(includeStatementsBuilder.build(), targetsBuilder.build(),
+          variablesBuilder.build(), rulesBuilder.build(), defaultsBuilder.build());
     }
   }
 

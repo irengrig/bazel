@@ -22,7 +22,9 @@ import com.google.devtools.build.lib.blackbox.framework.PathUtils;
 import com.google.devtools.build.lib.blackbox.framework.ProcessResult;
 import com.google.devtools.build.lib.blackbox.junit.AbstractBlackBoxTest;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import org.junit.Test;
 
 public class NinjaBlackBoxTest extends AbstractBlackBoxTest {
@@ -341,6 +343,37 @@ public class NinjaBlackBoxTest extends AbstractBlackBoxTest {
     assertThat(libraryPath.toFile().exists()).isTrue();
     System.out.println("\n============= Building cares: ============\n");
     System.out.println(result.errString());
+  }
+
+  @Test
+  public void testDoNotRunMeOnCIReadBigNinjaFile() throws Exception {
+    if (System.getenv("BUILDKITE") != null) {
+      return;
+    }
+
+    Path buildNinja = context().getWorkDir().resolve("build.ninja");
+    // mind --test_env flag:
+    // TEST_NINJA_FILE=<...> bash -c 'bazel test --test_filter=com.google.devtools.build.lib.blackbox.tests.ninja.NinjaBlackBoxTest#testDoNotRunMeOnCIReadBigNinjaFile$ --test_env=TEST_NINJA_FILE -- //src/test/java/com/google/devtools/build/lib/blackbox/tests:NinjaBlackBoxTest'
+    String pathFromEnv = System.getenv("TEST_NINJA_FILE");
+    Path origPath = Paths.get(pathFromEnv);
+
+    Files.createSymbolicLink(buildNinja, origPath);
+    context().write("WORKSPACE", "workspace(name = \"read_big_file\")");
+    context().write("BUILD", "filegroup(name = \"all\", srcs = glob([\"**\"], exclude = [\"bazel-*\", \"bazel-*/**\"]), visibility = [\"//visibility:public\"])",
+        "ninja_build(name = \"ninja_target\",",
+        "            srcs = [\":all\"],",
+        "            build_ninja = \":build.ninja\",",
+        "            export_targets = {\"all\" : \"all_files\"}",
+        ")");
+
+    long startTime = System.currentTimeMillis();
+    ProcessResult result = context().bazel()
+        .withEnv("bazel.ninja.chunk.size", "-1")
+        .withEnv("bazel.ninja.only.read.file", "true")
+        //.enableDebug()
+        .build("//:ninja_target");
+    long endTime = System.currentTimeMillis();
+    System.out.println("Time to read: " + (endTime - startTime) + ", " + result.outString());
   }
 
   private void copyFileRule() throws IOException {

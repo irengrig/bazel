@@ -28,9 +28,6 @@ public class NinjaRulesModule extends BlazeModule {
   public void workspaceInit(BlazeRuntime runtime, BlazeDirectories directories,
       WorkspaceBuilder builder) {
     builder.addSkyFunctions(ImmutableMap.of(
-        NinjaFileHeaderBulkValue.NINJA_HEADER_BULK, new NinjaFileHeaderBulkFunction(),
-        NinjaVariablesValue.NINJA_VARIABLES, new NinjaVariablesFunction(),
-        NinjaRulesValue.NINJA_RULES, new NinjaRulesFunction(),
         NinjaTargetsValue.NINJA_TARGETS, new NinjaTargetsFunction()
     ));
   }
