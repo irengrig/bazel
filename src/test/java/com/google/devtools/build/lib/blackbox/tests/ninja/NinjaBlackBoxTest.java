@@ -274,7 +274,7 @@ public class NinjaBlackBoxTest extends AbstractBlackBoxTest {
         "default out/hello");
     context().write("BUILD",
         "ninja_build(name = 'build_hello', ",
-        "srcs = [':build.ninja', ':hello.cxx'],",
+        "srcs = [':build.ninja'],",
         "build_ninja = ':build.ninja', executable_target = 'out/hello')");
 
     BuilderRunner bazel = context().bazel();
