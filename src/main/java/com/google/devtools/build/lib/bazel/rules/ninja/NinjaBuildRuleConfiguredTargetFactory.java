@@ -23,6 +23,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedMap;
+import com.google.common.collect.ImmutableSortedSet;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Multimap;
@@ -174,7 +175,11 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
 
       // filter only targets, needed for output
       // todo if export targets are not set, defaults should be used for filtering
-      targets = filterOnlyNeededTargetsAndReplaceAliases(executable, targets, requestedTargets);
+      try {
+        targets = filterOnlyNeededTargetsAndReplaceAliases(executable, targets, requestedTargets);
+      } catch (NinjaFileFormatException e) {
+        ruleContext.getRuleErrorConsumer().throwWithRuleError(e.getMessage());
+      }
       Set<String> generatedFiles = getGeneratedFiles(targets);
       RootsContext rootsContext = new RootsContext(Preconditions.checkNotNull(pkgLocator),
           workspaceRoot,
@@ -256,7 +261,8 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
   }
 
   private List<NinjaTarget> filterOnlyNeededTargetsAndReplaceAliases(PathFragment executable,
-      List<NinjaTarget> targets, Map<PathFragment, String> requestedTargets) {
+      List<NinjaTarget> targets, Map<PathFragment, String> requestedTargets)
+      throws NinjaFileFormatException {
     ArrayDeque<PathFragment> queue = new ArrayDeque<>();
     queue.addAll(requestedTargets.keySet());
     if (executable != null && !executable.isEmpty()) {
@@ -306,16 +312,17 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
   }
 
   @VisibleForTesting
-  public static List<NinjaTarget> replaceAliases(Collection<NinjaTarget> filteredTargets) {
+  public static List<NinjaTarget> replaceAliases(Collection<NinjaTarget> filteredTargets)
+      throws NinjaFileFormatException {
     // now replace aliases
     // todo we could also cache that
-    Multimap<PathFragment, PathFragment> inputsReplaceMap = Multimaps.newListMultimap(
-        Maps.newHashMap(), Lists::newArrayList
+    Multimap<PathFragment, PathFragment> inputsReplaceMap = Multimaps.newSetMultimap(
+        Maps.newHashMap(), Sets::newHashSet
     );
 
     for (NinjaTarget ninjaTarget : filteredTargets) {
       if ("phony".equals(ninjaTarget.getCommand())) {
-        PathFragment alias = PathFragment.create(ninjaTarget.getOutputs().get(0));
+        PathFragment alias = PathFragment.create(ninjaTarget.getOutputs().iterator().next());
         List<PathFragment> inputs = Lists.newArrayList();
 
         Consumer<String> consumer = p -> inputs.add(PathFragment.create(p));
@@ -326,31 +333,16 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
         inputsReplaceMap.putAll(alias, inputs);
       }
     }
-    // also replace in in replace map
-    ArrayList<PathFragment> copy = Lists.newArrayList(inputsReplaceMap.keys());
-    for (PathFragment alias : copy) {
-      Collection<PathFragment> inputs = inputsReplaceMap.get(alias);
-
-      for (PathFragment key : copy) {
-        if (alias.equals(key)) {
-          // no self replace
-          continue;
-        }
-        List<PathFragment> fragments = (List<PathFragment>) inputsReplaceMap.get(key);
-        if (fragments.remove(alias)) {
-          fragments.addAll(inputs);
-        }
-      }
-    }
+    NinjaReplaceAliasesUtil.replaceAliasesInAliasesMap(inputsReplaceMap);
     // we do not need aliases any more
     filteredTargets.removeIf(ninjaTarget -> "phony".equals(ninjaTarget.getCommand()));
 
     List<NinjaTarget> replacedAliases = Lists.newArrayListWithCapacity(filteredTargets.size());
     for (NinjaTarget ninjaTarget : filteredTargets) {
-      ImmutableList<String> inputs = replaceAliases(ninjaTarget.getInputs(), inputsReplaceMap);
-      ImmutableList<String> implicitInputs = replaceAliases(ninjaTarget.getImplicitInputs(),
+      ImmutableSortedSet<String> inputs = replaceAliases(ninjaTarget.getInputs(), inputsReplaceMap);
+      ImmutableSortedSet<String> implicitInputs = replaceAliases(ninjaTarget.getImplicitInputs(),
           inputsReplaceMap);
-      ImmutableList<String> orderOnlyInputs = replaceAliases(ninjaTarget.getOrderOnlyInputs(),
+      ImmutableSortedSet<String> orderOnlyInputs = replaceAliases(ninjaTarget.getOrderOnlyInputs(),
           inputsReplaceMap);
       if (inputs == null && implicitInputs == null && orderOnlyInputs == null) {
         replacedAliases.add(ninjaTarget);
@@ -369,8 +361,9 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
     return replacedAliases;
   }
 
-  private static ImmutableList<String> selectNonNull(@Nullable ImmutableList<String> filtered,
-      ImmutableList<String> defaultValue) {
+  private static ImmutableSortedSet<String> selectNonNull(
+      @Nullable ImmutableSortedSet<String> filtered,
+      ImmutableSortedSet<String> defaultValue) {
     if (filtered != null) {
       return filtered;
     } else {
@@ -379,9 +372,9 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
   }
 
   @Nullable
-  private static ImmutableList<String> replaceAliases(ImmutableList<String> inputs,
+  private static ImmutableSortedSet<String> replaceAliases(ImmutableSortedSet<String> inputs,
       Multimap<PathFragment, PathFragment> inputsReplaceMap) {
-    List<String> out = Lists.newArrayList();
+    Set<String> out = Sets.newHashSet();
     boolean anythingReplaced = false;
     for (String input : inputs) {
       Collection<PathFragment> fragments = inputsReplaceMap.get(PathFragment.create(input));
@@ -392,7 +385,7 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
         fragments.forEach(pf -> out.add(pf.getPathString()));
       }
     }
-    return anythingReplaced ? ImmutableList.copyOf(out) : null;
+    return anythingReplaced ? ImmutableSortedSet.copyOf(out) : null;
   }
 
   private Map<PathFragment, Artifact> fillDepsMapping(RuleContext ruleContext)
@@ -590,7 +583,7 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
   @VisibleForTesting
   public static String replaceParameters(NinjaTarget target, NinjaRule rule,
       ImmutableSortedMap<String, String> variables,
-      Function<ImmutableList<String>, ImmutableList<String>> replacer)
+      Function<ImmutableSortedSet<String>, ImmutableSortedSet<String>> replacer)
       throws NinjaFileFormatException {
     Map<String, String> parameters = Maps.newHashMap();
     rule.getParameters().forEach((key, value) -> parameters.put(key.name(), value));
@@ -644,8 +637,8 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
       fs = pkgLocator.getOutputBase().getFileSystem();
     }
 
-    public ImmutableList<String> maybeReplaceAliases(ImmutableList<String> paths) {
-      ImmutableList.Builder<String> builder = ImmutableList.builder();
+    public ImmutableSortedSet<String> maybeReplaceAliases(ImmutableSortedSet<String> paths) {
+      ImmutableSortedSet.Builder<String> builder = ImmutableSortedSet.naturalOrder();
       for (String path : paths) {
         builder.add(maybeReplaceAlias(path));
       }

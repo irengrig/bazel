@@ -16,26 +16,26 @@
 package com.google.devtools.build.lib.bazel.rules.ninja;
 
 import com.google.common.base.Preconditions;
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSortedMap;
+import com.google.common.collect.ImmutableSortedSet;
 import java.util.Objects;
 
 public class NinjaTarget {
   private final String command;
-  private final ImmutableList<String> inputs;
-  private final ImmutableList<String> implicitInputs;
-  private final ImmutableList<String> orderOnlyInputs;
+  private final ImmutableSortedSet<String> inputs;
+  private final ImmutableSortedSet<String> implicitInputs;
+  private final ImmutableSortedSet<String> orderOnlyInputs;
 
-  private final ImmutableList<String> outputs;
-  private final ImmutableList<String> implicitOutputs;
+  private final ImmutableSortedSet<String> outputs;
+  private final ImmutableSortedSet<String> implicitOutputs;
 
   private final ImmutableSortedMap<String, String> variables;
 
-  public NinjaTarget(String command, ImmutableList<String> inputs,
-      ImmutableList<String> implicitInputs,
-      ImmutableList<String> orderOnlyInputs,
-      ImmutableList<String> outputs,
-      ImmutableList<String> implicitOutputs,
+  public NinjaTarget(String command, ImmutableSortedSet<String> inputs,
+      ImmutableSortedSet<String> implicitInputs,
+      ImmutableSortedSet<String> orderOnlyInputs,
+      ImmutableSortedSet<String> outputs,
+      ImmutableSortedSet<String> implicitOutputs,
       ImmutableSortedMap<String, String> variables) {
     this.command = command;
     this.inputs = inputs;
@@ -50,23 +50,23 @@ public class NinjaTarget {
     return command;
   }
 
-  public ImmutableList<String> getInputs() {
+  public ImmutableSortedSet<String> getInputs() {
     return inputs;
   }
 
-  public ImmutableList<String> getImplicitInputs() {
+  public ImmutableSortedSet<String> getImplicitInputs() {
     return implicitInputs;
   }
 
-  public ImmutableList<String> getOrderOnlyInputs() {
+  public ImmutableSortedSet<String> getOrderOnlyInputs() {
     return orderOnlyInputs;
   }
 
-  public ImmutableList<String> getOutputs() {
+  public ImmutableSortedSet<String> getOutputs() {
     return outputs;
   }
 
-  public ImmutableList<String> getImplicitOutputs() {
+  public ImmutableSortedSet<String> getImplicitOutputs() {
     return implicitOutputs;
   }
 
@@ -118,21 +118,21 @@ public class NinjaTarget {
 
   public static class Builder {
     private String command;
-    private final ImmutableList.Builder<String> inputsBuilder;
-    private final ImmutableList.Builder<String> implicitInputsBuilder;
-    private final ImmutableList.Builder<String> orderOnlyInputsBuilder;
+    private final ImmutableSortedSet.Builder<String> inputsBuilder;
+    private final ImmutableSortedSet.Builder<String> implicitInputsBuilder;
+    private final ImmutableSortedSet.Builder<String> orderOnlyInputsBuilder;
 
-    private final ImmutableList.Builder<String> outputsBuilder;
-    private final ImmutableList.Builder<String> implicitOutputsBuilder;
+    private final ImmutableSortedSet.Builder<String> outputsBuilder;
+    private final ImmutableSortedSet.Builder<String> implicitOutputsBuilder;
 
     private final ImmutableSortedMap.Builder<String, String> variablesBuilder;
 
     private Builder() {
-      inputsBuilder = new ImmutableList.Builder<>();
-      implicitInputsBuilder = new ImmutableList.Builder<>();
-      orderOnlyInputsBuilder = new ImmutableList.Builder<>();
-      outputsBuilder = new ImmutableList.Builder<>();
-      implicitOutputsBuilder = new ImmutableList.Builder<>();
+      inputsBuilder = ImmutableSortedSet.naturalOrder();
+      implicitInputsBuilder = ImmutableSortedSet.naturalOrder();
+      orderOnlyInputsBuilder = ImmutableSortedSet.naturalOrder();
+      outputsBuilder = ImmutableSortedSet.naturalOrder();
+      implicitOutputsBuilder = ImmutableSortedSet.naturalOrder();
       variablesBuilder = ImmutableSortedMap.naturalOrder();
     }
 
