@@ -151,6 +151,12 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
 
     Artifact executableArtifact = null;
     if (!ONLY_READ_FILE) {
+      try {
+        variables = replaceVariablesInVariables(ImmutableSortedMap.of(), variables);
+      } catch (NinjaFileFormatException e) {
+        ruleContext.getRuleErrorConsumer().throwWithRuleError(e.getMessage());
+      }
+
       PathPackageLocator pkgLocator = PrecomputedValue.PATH_PACKAGE_LOCATOR.get(env);
       BlacklistedPackagePrefixesValue blacklistedPrefixes =
           (BlacklistedPackagePrefixesValue) env.getValue(BlacklistedPackagePrefixesValue.key());
