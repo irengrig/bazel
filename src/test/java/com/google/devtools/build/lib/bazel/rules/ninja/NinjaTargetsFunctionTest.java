@@ -346,7 +346,7 @@ public class NinjaTargetsFunctionTest {
     String command = NinjaBuildRuleConfiguredTargetFactory
         .replaceParameters(targets.get(0), rules.get("C_SHARED_LIBRARY_LINKER__c-ares"),
             ImmutableSortedMap.of(),
-            Function.identity());
+            ImmutableSortedMap.of(), Function.identity());
 
     ImmutableSet<String> variables = ImmutableSet.of("LINK_LIBRARIES", "OBJECT_DIR", "POST_BUILD",
         "PRE_LINK", "SONAME", "SONAME_FLAG", "TARGET_COMPILE_PDB", "TARGET_FILE", "TARGET_PDB");

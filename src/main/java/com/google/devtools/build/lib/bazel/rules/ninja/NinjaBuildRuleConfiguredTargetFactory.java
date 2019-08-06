@@ -15,6 +15,7 @@
 
 package com.google.devtools.build.lib.bazel.rules.ninja;
 
+import static com.google.devtools.build.lib.bazel.rules.ninja.NinjaVariableReplacementUtil.replaceVariables;
 import static com.google.devtools.build.lib.bazel.rules.ninja.NinjaVariableReplacementUtil.replaceVariablesInVariables;
 
 import com.google.common.annotations.VisibleForTesting;
@@ -537,33 +538,23 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
     NestedSet<Artifact> files = buildNinja.getProvider(FileProvider.class).getFilesToBuild();
     inputsBuilder.addTransitive(files);
 
-    for (String s : target.getInputs()) {
-      rootsContext.addArtifacts(inputsBuilder, s, true);
-    }
+    ImmutableSortedMap<String, String> targetVariables = replaceVariablesInVariables(
+        variables, ImmutableSortedMap.copyOf(target.getVariables()));
 
-    for (String input : target.getImplicitInputs()) {
-      rootsContext.addArtifacts(inputsBuilder, input, true);
-    }
-    for (String input : target.getOrderOnlyInputs()) {
-      rootsContext.addArtifacts(inputsBuilder, input, true);
-    }
+    addArtifactsReplaceVariables(inputsBuilder, target.getInputs(), variables, targetVariables, rootsContext, true);
+    addArtifactsReplaceVariables(inputsBuilder, target.getImplicitInputs(), variables, targetVariables, rootsContext, true);
+    addArtifactsReplaceVariables(inputsBuilder, target.getOrderOnlyInputs(), variables, targetVariables, rootsContext, true);
 
     NestedSetBuilder<Artifact> outputsBuilder = NestedSetBuilder.stableOrder();
-    for (String output : target.getOutputs()) {
-      rootsContext.addArtifacts(outputsBuilder, output, false);
-    }
+    addArtifactsReplaceVariables(outputsBuilder, target.getOutputs(), variables, targetVariables, rootsContext, false);
+    addArtifactsReplaceVariables(outputsBuilder, target.getImplicitOutputs(), variables, targetVariables, rootsContext, false);
 
-    for (String output : target.getImplicitOutputs()) {
-      rootsContext.addArtifacts(outputsBuilder, output, false);
-    }
-
-    // todo just input & output for now
     CommandHelper commandHelper = CommandHelper
         .builder(ruleContext)
         .addLabelMap(labelMap.build())
         .build();
 
-    String command = replaceParameters(target, rule, variables, rootsContext::maybeReplaceAliases);
+    String command = replaceParameters(target, rule, variables, targetVariables, rootsContext::maybeReplaceAliases);
     String outPath = String.join(", ", target.getOutputs());
     List<String> argv = commandHelper.buildCommandLine(shExecutable,
         command,
@@ -586,9 +577,28 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
     return filesToBuild;
   }
 
+  private static void addArtifactsReplaceVariables(
+      NestedSetBuilder<Artifact> builder,
+      Collection<String> paths,
+      ImmutableSortedMap<String, String> variables,
+      ImmutableSortedMap<String, String> targetVariables,
+      RootsContext rootsContext,
+      boolean isInput) throws NinjaFileFormatException, IOException {
+    for (String path : paths) {
+      String replaced = replaceVariables(path, variables, targetVariables);
+      if (!replaced.isEmpty()) {
+        rootsContext.addArtifacts(builder, replaced, isInput);
+      } else {
+        // TODO debug
+        System.out.println("Strange path after replacement: " + path);
+      }
+    }
+  }
+
   @VisibleForTesting
   public static String replaceParameters(NinjaTarget target, NinjaRule rule,
       ImmutableSortedMap<String, String> variables,
+      ImmutableSortedMap<String, String> targetVariables,
       Function<ImmutableSortedSet<String>, ImmutableSortedSet<String>> replacer)
       throws NinjaFileFormatException {
     Map<String, String> parameters = Maps.newHashMap();
@@ -598,7 +608,7 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
     parameters.put(ParameterName.out.name(), String.join(" ", replacer.apply(target.getOutputs())));
 
     // Merge variable defined in target so that they override correctly.
-    parameters.putAll(target.getVariables());
+    parameters.putAll(targetVariables);
 
     ImmutableSortedMap<String, String> replacedParameters = replaceVariablesInVariables(
         variables, ImmutableSortedMap.copyOf(parameters));
