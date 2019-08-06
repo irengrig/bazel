@@ -18,6 +18,7 @@ package com.google.devtools.build.lib.bazel.rules.ninja;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableSortedMap;
 import com.google.common.collect.ImmutableSortedSet;
+import java.util.List;
 import java.util.Objects;
 
 public class NinjaTarget {
@@ -163,6 +164,31 @@ public class NinjaTarget {
 
     public Builder addImplicitOutputs(String... outputs) {
       implicitOutputsBuilder.add(outputs);
+      return this;
+    }
+
+    public Builder addInputs(List<String> inputs) {
+      inputsBuilder.addAll(inputs);
+      return this;
+    }
+
+    public Builder addImplicitInputs(List<String> inputs) {
+      implicitInputsBuilder.addAll(inputs);
+      return this;
+    }
+
+    public Builder addOrderOnlyInputs(List<String> inputs) {
+      orderOnlyInputsBuilder.addAll(inputs);
+      return this;
+    }
+
+    public Builder addOutputs(List<String> outputs) {
+      outputsBuilder.addAll(outputs);
+      return this;
+    }
+
+    public Builder addImplicitOutputs(List<String> outputs) {
+      implicitOutputsBuilder.addAll(outputs);
       return this;
     }
 

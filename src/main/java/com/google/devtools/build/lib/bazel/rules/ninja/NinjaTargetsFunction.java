@@ -269,15 +269,15 @@ public class NinjaTargetsFunction implements SkyFunction {
       throws NinjaFileFormatSkyFunctionException {
     String buildText = header.substring("build ".length());
 
-    TokenProcessor addToInputs = string -> tBuilder.addInputs(string.split(" "));
+    TokenProcessor addToInputs = string -> tBuilder.addInputs(splitBySpace(string));
     TokenProcessor addToImplicitInputs =
-        string -> tBuilder.addImplicitInputs(string.split(" "));
+        string -> tBuilder.addImplicitInputs(splitBySpace(string));
     TokenProcessor addToOrderOnlyInputs =
-        string -> tBuilder.addOrderOnlyInputs(string.split(" "));
+        string -> tBuilder.addOrderOnlyInputs(splitBySpace(string));
 
-    TokenProcessor addToOutputs = string -> tBuilder.addOutputs(string.split(" "));
+    TokenProcessor addToOutputs = string -> tBuilder.addOutputs(splitBySpace(string));
     TokenProcessor addToImplicitOutputs =
-        string -> tBuilder.addImplicitOutputs(string.split(" "));
+        string -> tBuilder.addImplicitOutputs(splitBySpace(string));
 
     new Splitter(":", true)
         .head(new Splitter("|")
@@ -293,6 +293,26 @@ public class NinjaTargetsFunction implements SkyFunction {
             )
             .tail(addToOrderOnlyInputs)
         ).accept(buildText);
+  }
+
+  private static List<String> splitBySpace(String s) {
+    List<String> result = Lists.newArrayList();
+    int start = 0;
+    while (start < s.length()) {
+      int next = s.indexOf(" ", start);
+      if (next < 0) {
+        // last
+        result.add(s.substring(start));
+        break;
+      } else {
+        result.add(s.substring(start, next));
+      }
+      start = next + 1;
+      while (start < s.length() && s.charAt(start) == ' ') {
+        ++start;
+      }
+    }
+    return result;
   }
 
   private static void parseDefault(List<String> lines, NinjaTargetsValue.Builder builder)
