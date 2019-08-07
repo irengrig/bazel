@@ -587,7 +587,7 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
     for (String path : paths) {
       String replaced = replaceVariables(path, variables, targetVariables);
       if (!replaced.isEmpty()) {
-        rootsContext.addArtifacts(builder, replaced, isInput);
+        rootsContext.addArtifacts(builder, replaceEscapedSequences(replaced), isInput);
       } else {
         // TODO debug
         System.out.println("Strange path after replacement: " + path);
@@ -612,11 +612,14 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
 
     ImmutableSortedMap<String, String> replacedParameters = replaceVariablesInVariables(
         variables, ImmutableSortedMap.copyOf(parameters));
-    String command = replacedParameters.get(ParameterName.command.name());
+    return replaceEscapedSequences(replacedParameters.get(ParameterName.command.name()));
+  }
+
+  private static String replaceEscapedSequences(String text) {
     for (Map.Entry<String, String> entry : ESCAPE_REPLACEMENTS.entrySet()) {
-      command = command.replace(entry.getKey(), entry.getValue());
+      text = text.replace(entry.getKey(), entry.getValue());
     }
-    return command;
+    return text;
   }
 
   private static Map<String, String> createExecutionInfo(RuleContext ruleContext) {
@@ -726,11 +729,13 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
       if (!fsPath.exists()) {
         return null;
       }
-      for (PathFragment blacklistedPackage : blacklistedPackages) {
-        if (fragment.startsWith(blacklistedPackage)) {
-          return null;
-        }
-      }
+      // for (PathFragment blacklistedPackage : blacklistedPackages) {
+      //   if (fragment.startsWith(blacklistedPackage)
+      //       // todo this is a temporary hack for the external directory under sources
+      //       && !"external".equals(blacklistedPackage.getPathString())) {
+      //     return null;
+      //   }
+      // }
 
       ImmutableList<Root> pathEntries = pkgLocator.getPathEntries();
       for (Root pathEntry : pathEntries) {
