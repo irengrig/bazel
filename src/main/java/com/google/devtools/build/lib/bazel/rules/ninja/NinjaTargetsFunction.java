@@ -231,9 +231,8 @@ public class NinjaTargetsFunction implements SkyFunction {
           && target.getOrderOnlyInputs().isEmpty()) {
         // Skip the target: it is a phony statement without inputs,
         // declaring that the named output files can be non existent at build time
-        return;
-      }
-      if (target.getOutputs().size() > 1) {
+        // return;
+      } else if (target.getOutputs().size() > 1) {
         throw new NinjaFileFormatSkyFunctionException(
             "Phony target with several alias names: " + header);
       }

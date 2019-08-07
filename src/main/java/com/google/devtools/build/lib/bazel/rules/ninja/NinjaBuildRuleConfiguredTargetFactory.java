@@ -122,9 +122,10 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
     }
 
     ImmutableSortedMap.Builder<String, NinjaRule> rulesBuilder = ImmutableSortedMap.naturalOrder();
-    ImmutableSortedMap.Builder<String, String> variablesBuilder = ImmutableSortedMap.naturalOrder();
+    Map<String, String> variablesBuilder = Maps.newHashMap();
     List<NinjaTarget> targets = Lists.newArrayList();
     for (NinjaTargetsValue value : bulkValues) {
+      // todo: in future, support variables hierarchy inside subninja
       rulesBuilder.putAll(value.getRules());
       variablesBuilder.putAll(value.getVariables());
       targets.addAll(value.getTargets());
@@ -132,7 +133,7 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
     }
 
     ImmutableSortedMap<String, NinjaRule> rules = rulesBuilder.build();
-    ImmutableSortedMap<String, String> variables = variablesBuilder.build();
+    ImmutableSortedMap<String, String> variables = ImmutableSortedMap.copyOf(variablesBuilder);
 
     return createConfiguredTarget(ruleContext, executable, analysisEnvironment, env, targets, rules,
         variables);
@@ -180,6 +181,8 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
         requestedTargets.put(PathFragment.create(entry.getKey()), entry.getValue());
       }
 
+      Set<String> phonyArtifacts = getPhonyArtifacts(targets);
+
       // filter only targets, needed for output
       // todo if export targets are not set, defaults should be used for filtering
       try {
@@ -191,7 +194,7 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
       RootsContext rootsContext = new RootsContext(Preconditions.checkNotNull(pkgLocator),
           workspaceRoot,
           Preconditions.checkNotNull(blacklistedPrefixes).getPatterns(), analysisEnvironment,
-          aliases, generatedFiles);
+          aliases, phonyArtifacts, generatedFiles);
 
       for (NinjaTarget target : targets) {
         String command = target.getCommand();
@@ -255,6 +258,20 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
       builder.addOutputGroups(outputGroups);
     }
     return builder.build();
+  }
+
+  private static Set<String> getPhonyArtifacts(List<NinjaTarget> targets) {
+    Set<String> phonyArtifacts = Sets.newHashSet();
+    targets.forEach(ninjaTarget -> {
+      if ("phony".equals(ninjaTarget.getCommand())
+          && ninjaTarget.getInputs().isEmpty()
+          && ninjaTarget.getImplicitInputs().isEmpty()
+          && ninjaTarget.getOrderOnlyInputs().isEmpty()) {
+        // do-nothing always dirty action
+        phonyArtifacts.add(ninjaTarget.getOutputs().first());
+      }
+    });
+    return phonyArtifacts;
   }
 
   private Set<String> getGeneratedFiles(List<NinjaTarget> targets) {
@@ -329,7 +346,13 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
 
     for (NinjaTarget ninjaTarget : filteredTargets) {
       if ("phony".equals(ninjaTarget.getCommand())) {
-        PathFragment alias = PathFragment.create(ninjaTarget.getOutputs().iterator().next());
+        if (ninjaTarget.getInputs().isEmpty()
+            && ninjaTarget.getImplicitInputs().isEmpty()
+            && ninjaTarget.getOrderOnlyInputs().isEmpty()) {
+          // do-nothing always dirty action
+          continue;
+        }
+        PathFragment alias = PathFragment.create(ninjaTarget.getOutputs().first());
         List<PathFragment> inputs = Lists.newArrayList();
 
         Consumer<String> consumer = p -> inputs.add(PathFragment.create(p));
@@ -559,7 +582,7 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
     List<String> argv = commandHelper.buildCommandLine(shExecutable,
         command,
         inputsBuilder,
-        ".ninjarule_script.sh");
+        target.getOutputs().first() + ".ninja.rule.script.sh");
 
     NestedSet<Artifact> filesToBuild = outputsBuilder.build();
     GenRuleAction action = new GenRuleAction(
@@ -639,18 +662,22 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
     private final ImmutableSet<PathFragment> blacklistedPackages;
     private final AnalysisEnvironment analysisEnvironment;
     private final Map<PathFragment, Artifact> aliases;
+    private final Set<String> phonyArtifacts;
     private final Set<String> generatedFiles;
     private ArtifactRoot execRoot;
 
     private RootsContext(PathPackageLocator pkgLocator, Path workspaceRoot,
         ImmutableSet<PathFragment> blacklistedPackages,
         AnalysisEnvironment analysisEnvironment,
-        Map<PathFragment, Artifact> aliases, Set<String> generatedFiles) {
+        Map<PathFragment, Artifact> aliases,
+        Set<String> phonyArtifacts,
+        Set<String> generatedFiles) {
       this.pkgLocator = pkgLocator;
       this.workspaceRoot = Root.fromPath(workspaceRoot);
       this.blacklistedPackages = blacklistedPackages;
       this.analysisEnvironment = analysisEnvironment;
       this.aliases = aliases;
+      this.phonyArtifacts = phonyArtifacts;
       this.generatedFiles = generatedFiles;
       artifactCache = Maps.newHashMap();
       fs = pkgLocator.getOutputBase().getFileSystem();
@@ -693,6 +720,12 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
       // todo better use path fragments for comparing paths
       if (isInput && !generatedFiles.contains(path)) {
         if (fsPath.isDirectory()) {
+          return;
+        }
+        // todo use path fragments for comparison
+        if (phonyArtifacts.contains(path) && !fsPath.exists()) {
+          // do not register this always dirty dependency;
+          // todo in future, make it always dirty
           return;
         }
         Root sourceRoot = getSourceRoot(fragment, fsPath);
