@@ -188,7 +188,7 @@ public class NinjaTargetsFunctionTest {
 
     NinjaTargetsValue value = builder.build();
     List<NinjaTarget> targets = value.getTargets();
-    assertThat(targets).hasSize(2);
+    assertThat(targets).hasSize(3);
 
     assertThat(targets).containsExactly(
         NinjaTarget.builder()
@@ -201,6 +201,10 @@ public class NinjaTargetsFunctionTest {
             .addOutputs("cde")
             .addImplicitInputs("implicit")
             .addOrderOnlyInputs("order-only")
+            .build(),
+        NinjaTarget.builder()
+            .setCommand("phony")
+            .addOutputs("skip", "those", "targets")
             .build()
     );
   }

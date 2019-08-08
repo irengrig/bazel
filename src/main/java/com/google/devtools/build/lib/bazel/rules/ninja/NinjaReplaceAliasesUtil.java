@@ -27,13 +27,18 @@ import java.util.Set;
 public class NinjaReplaceAliasesUtil {
   public static void replaceAliasesInAliasesMap(
       Multimap<PathFragment, PathFragment> changeable) throws NinjaFileFormatException {
-    List<PathFragment> copy = Lists.newArrayList(changeable.keys());
+    Set<PathFragment> copy = Sets.newHashSet(changeable.keys());
     HashSet<PathFragment> set = Sets.newHashSet();
     for (PathFragment path : copy) {
-      Collection<PathFragment> replacement = NinjaReplaceAliasesUtil
-          .replaceAliasesInAliasesMapRecursively(path, changeable, set);
-      if (replacement != null) {
-        changeable.putAll(path, replacement);
+      Collection<PathFragment> values = changeable.get(path);
+      Set<PathFragment> valuesCopy = Sets.newHashSet(values);
+      for (PathFragment value : valuesCopy) {
+        Collection<PathFragment> replacement = NinjaReplaceAliasesUtil
+            .replaceAliasesInAliasesMapRecursively(value, changeable, set);
+        if (replacement != null) {
+          values.remove(value);
+          values.addAll(replacement);
+        }
       }
     }
   }
