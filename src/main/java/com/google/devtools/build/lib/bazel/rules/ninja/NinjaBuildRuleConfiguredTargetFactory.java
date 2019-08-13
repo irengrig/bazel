@@ -70,14 +70,15 @@ import com.google.devtools.build.lib.vfs.RootedPath;
 import com.google.devtools.build.skyframe.SkyFunction.Environment;
 import java.io.IOException;
 import java.util.ArrayDeque;
-import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 
 public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTargetFactory {
@@ -186,7 +187,8 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
       // filter only targets, needed for output
       // todo if export targets are not set, defaults should be used for filtering
       try {
-        targets = filterOnlyNeededTargetsAndReplaceAliases(executable, targets, requestedTargets);
+        targets = filterOnlyNeededTargetsAndReplaceAliases(executable, targets,
+            exportTargets.keySet());
       } catch (NinjaFileFormatException e) {
         ruleContext.getRuleErrorConsumer().throwWithRuleError(e.getMessage());
       }
@@ -285,52 +287,51 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
   }
 
   private List<NinjaTarget> filterOnlyNeededTargetsAndReplaceAliases(PathFragment executable,
-      List<NinjaTarget> targets, Map<PathFragment, String> requestedTargets)
+      List<NinjaTarget> targets, Set<String> requestedPaths)
       throws NinjaFileFormatException {
-    ArrayDeque<PathFragment> queue = new ArrayDeque<>();
-    queue.addAll(requestedTargets.keySet());
+    Set<String> queue = Sets.newHashSet(requestedPaths);
     if (executable != null && !executable.isEmpty()) {
-      queue.add(executable);
+      queue.add(executable.getPathString());
     }
     if (queue.isEmpty()) {
       return replaceAliases(Lists.newArrayList(targets));
     }
 
-    Set<NinjaTarget> filteredTargets = Sets.newHashSet();
-    Set<PathFragment> checkedPf = Sets.newHashSet();
+    Set<String> checkedPf = Sets.newHashSet();
 
     // TODO: express it better
-    Map<PathFragment, NinjaTarget> pf2target = Maps.newHashMap();
+    Multimap<String, String> targetsInputs = Multimaps.newSetMultimap(
+        Maps.newHashMap(), Sets::newHashSet
+    );;
     for (NinjaTarget target : targets) {
-      for (String output : target.getOutputs()) {
-        pf2target.put(PathFragment.create(output), target);
-      }
-      for (String output : target.getImplicitOutputs()) {
-        pf2target.put(PathFragment.create(output), target);
-      }
+      Consumer<String> adder = output -> {
+        targetsInputs.putAll(output, target.getInputs());
+        targetsInputs.putAll(output, target.getOrderOnlyInputs());
+        targetsInputs.putAll(output, target.getImplicitInputs());
+      };
+      target.getOutputs().forEach(adder);
+      target.getImplicitOutputs().forEach(adder);
     }
 
     while (!queue.isEmpty()) {
-      PathFragment pf = queue.removeFirst();
-      checkedPf.add(pf);
-      NinjaTarget ninjaTarget = pf2target.get(pf);
-      if (ninjaTarget == null) {
-        // must be an input file then; further: check it
+      Iterator<String> iterator = queue.iterator();
+      String path = iterator.next();
+      iterator.remove();
+      Collection<String> inputs = targetsInputs.get(path);
+      if (inputs == null || inputs.isEmpty()) {
         continue;
       }
-
-      filteredTargets.add(ninjaTarget);
-
-      List<String> inputs = Lists.newArrayList(ninjaTarget.getInputs());
-      inputs.addAll(ninjaTarget.getImplicitInputs());
-      inputs.addAll(ninjaTarget.getOrderOnlyInputs());
+      // only add outputs
+      checkedPf.add(path);
       for (String input : inputs) {
-        PathFragment inputPf = PathFragment.create(input);
-        if (!checkedPf.contains(inputPf)) {
-          queue.add(inputPf);
+        if (!checkedPf.contains(input) && !queue.contains(input) && targetsInputs.containsKey(input)) {
+          queue.add(input);
         }
       }
     }
+    List<NinjaTarget> filteredTargets = targets.stream()
+        .filter(t -> t.getOutputs().stream().anyMatch(checkedPf::contains))
+        .collect(Collectors.toList());
 
     return replaceAliases(filteredTargets);
   }
