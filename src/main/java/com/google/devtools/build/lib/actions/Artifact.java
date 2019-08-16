@@ -422,6 +422,11 @@ public abstract class Artifact
     public PathFragment getRootRelativePath() {
       return rootRelativePath;
     }
+
+    @Override
+    public boolean isSourceArtifact() {
+      return super.isSourceArtifact() || !hasGeneratingActionKey();
+    }
   }
 
   public final Path getPath() {
@@ -541,7 +546,7 @@ public abstract class Artifact
    * DerivedArtifact} otherwise.
    */
   @Override
-  public final boolean isSourceArtifact() {
+  public boolean isSourceArtifact() {
     return root.isSourceRoot();
   }
 
