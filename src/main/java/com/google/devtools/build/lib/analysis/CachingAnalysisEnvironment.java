@@ -19,11 +19,13 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
 import com.google.devtools.build.lib.actions.ActionAnalysisMetadata;
 import com.google.devtools.build.lib.actions.ActionKeyContext;
 import com.google.devtools.build.lib.actions.ActionLookupValue;
 import com.google.devtools.build.lib.actions.Artifact;
 import com.google.devtools.build.lib.actions.Artifact.SpecialArtifact;
+import com.google.devtools.build.lib.actions.Artifact.UnderWorkspaceArtifact;
 import com.google.devtools.build.lib.actions.ArtifactFactory;
 import com.google.devtools.build.lib.actions.ArtifactRoot;
 import com.google.devtools.build.lib.actions.MiddlemanFactory;
@@ -142,7 +144,16 @@ public class CachingAnalysisEnvironment implements AnalysisEnvironment {
    * @param target for error reporting
    */
   public void verifyGeneratedArtifactHaveActions(Target target) {
-    Collection<String> orphanArtifacts = getOrphanArtifactMap().values();
+    Map<Artifact, String> map = getOrphanArtifactMap();
+    Set<Artifact> copy = Sets.newHashSet();
+    copy.addAll(map.keySet());
+    copy.forEach(oa -> {
+      if (oa instanceof UnderWorkspaceArtifact) {
+        map.remove(oa);
+      }
+    });
+
+    Collection<String> orphanArtifacts = map.values();
     List<String> checkedActions = null;
     if (!orphanArtifacts.isEmpty()) {
       checkedActions = Lists.newArrayListWithCapacity(actions.size());
