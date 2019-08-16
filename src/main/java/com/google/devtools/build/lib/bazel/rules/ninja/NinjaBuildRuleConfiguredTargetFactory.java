@@ -187,6 +187,11 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
       // filter only targets, needed for output
       // todo if export targets are not set, defaults should be used for filtering
       try {
+        List<NinjaTarget> copy = Lists.newArrayListWithCapacity(targets.size());
+        for (NinjaTarget target : targets) {
+          copy.add(replaceTargetVariables(target, variables));
+        }
+        targets = copy;
         targets = filterOnlyNeededTargetsAndReplaceAliases(executable, targets,
             exportTargets.keySet());
       } catch (NinjaFileFormatException e) {
@@ -577,23 +582,23 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
     NestedSet<Artifact> files = buildNinja.getProvider(FileProvider.class).getFilesToBuild();
     inputsBuilder.addTransitive(files);
 
-    ImmutableSortedMap<String, String> targetVariables = replaceVariablesInVariables(
-        variables, ImmutableSortedMap.copyOf(target.getVariables()));
+    // ImmutableSortedMap<String, String> targetVariables = replaceVariablesInVariables(
+    //     variables, ImmutableSortedMap.copyOf(target.getVariables()));
 
-    addArtifactsReplaceVariables(inputsBuilder, target.getInputs(), variables, targetVariables, rootsContext, true);
-    addArtifactsReplaceVariables(inputsBuilder, target.getImplicitInputs(), variables, targetVariables, rootsContext, true);
-    addArtifactsReplaceVariables(inputsBuilder, target.getOrderOnlyInputs(), variables, targetVariables, rootsContext, true);
+    addArtifactsReplaceVariables(inputsBuilder, target.getInputs(), rootsContext, true);
+    addArtifactsReplaceVariables(inputsBuilder, target.getImplicitInputs(), rootsContext, true);
+    addArtifactsReplaceVariables(inputsBuilder, target.getOrderOnlyInputs(), rootsContext, true);
 
     NestedSetBuilder<Artifact> outputsBuilder = NestedSetBuilder.stableOrder();
-    addArtifactsReplaceVariables(outputsBuilder, target.getOutputs(), variables, targetVariables, rootsContext, false);
-    addArtifactsReplaceVariables(outputsBuilder, target.getImplicitOutputs(), variables, targetVariables, rootsContext, false);
+    addArtifactsReplaceVariables(outputsBuilder, target.getOutputs(), rootsContext, false);
+    addArtifactsReplaceVariables(outputsBuilder, target.getImplicitOutputs(), rootsContext, false);
 
     CommandHelper commandHelper = CommandHelper
         .builder(ruleContext)
         .addLabelMap(labelMap.build())
         .build();
 
-    String command = replaceParameters(target, rule, variables, targetVariables, rootsContext::maybeReplaceAliases);
+    String command = replaceParameters(target, rule, variables, target.getVariables(), rootsContext::maybeReplaceAliases);
     String outPath = String.join(", ", target.getOutputs());
     List<String> argv = commandHelper.buildCommandLine(shExecutable,
         command,
@@ -616,21 +621,48 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
     return filesToBuild;
   }
 
+  private static NinjaTarget replaceTargetVariables(NinjaTarget target,
+      ImmutableSortedMap<String, String> variables) throws NinjaFileFormatException {
+    ImmutableSortedMap<String, String> targetVariables = replaceVariablesInVariables(
+        variables, ImmutableSortedMap.copyOf(target.getVariables()));
+
+    NinjaTarget.Builder builder = NinjaTarget.builder().setCommand(target.getCommand());
+
+    builder.addInputs(replaceVariablesInList(target.getInputs(), variables, targetVariables));
+    builder.addImplicitInputs(replaceVariablesInList(target.getImplicitInputs(), variables, targetVariables));
+    builder.addOrderOnlyInputs(replaceVariablesInList(target.getOrderOnlyInputs(), variables, targetVariables));
+
+    builder.addOutputs(replaceVariablesInList(target.getOutputs(), variables, targetVariables));
+    builder.addImplicitOutputs(replaceVariablesInList(target.getImplicitOutputs(), variables, targetVariables));
+    targetVariables.forEach(builder::addVariable);
+
+    return builder.build();
+  }
+
+  private static List<String> replaceVariablesInList(List<String> list,
+      ImmutableSortedMap<String, String> variables,
+      ImmutableSortedMap<String, String> targetVariables) throws NinjaFileFormatException {
+    List<String> result = Lists.newArrayListWithCapacity(list.size());
+    for (String path : list) {
+      result.add(replaceVariables(path, variables, targetVariables));
+    }
+    return result;
+  }
+
   private static void addArtifactsReplaceVariables(
       NestedSetBuilder<Artifact> builder,
       Collection<String> paths,
-      ImmutableSortedMap<String, String> variables,
-      ImmutableSortedMap<String, String> targetVariables,
       RootsContext rootsContext,
       boolean isInput) throws NinjaFileFormatException, IOException {
     for (String path : paths) {
-      String replaced = replaceVariables(path, variables, targetVariables);
-      if (!replaced.isEmpty()) {
-        rootsContext.addArtifacts(builder, replaceEscapedSequences(replaced), isInput);
-      } else {
-        // TODO debug
-        System.out.println("Strange path after replacement: " + path);
-      }
+      rootsContext.addArtifacts(builder, replaceEscapedSequences(path), isInput);
+      // String replaced = replaceVariables(path, variables, targetVariables);
+      // if (!replaced.isEmpty()) {
+      //   rootsContext.addArtifacts(builder, replaceEscapedSequences(replaced), isInput);
+      // } else {
+      //   // TODO debug
+      //   System.out.println("Strange path after replacement: " + path);
+      // }
     }
   }
 
