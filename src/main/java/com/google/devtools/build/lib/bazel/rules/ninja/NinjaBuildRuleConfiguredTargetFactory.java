@@ -302,12 +302,19 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
     // TODO: express it better
     Multimap<String, String> targetsInputs = Multimaps.newSetMultimap(
         Maps.newHashMap(), Sets::newHashSet
-    );;
+    );
+    Set<String> generators = Sets.newHashSet();
     for (NinjaTarget target : targets) {
       Consumer<String> adder = output -> {
-        targetsInputs.putAll(output, target.getInputs());
-        targetsInputs.putAll(output, target.getOrderOnlyInputs());
-        targetsInputs.putAll(output, target.getImplicitInputs());
+        if (target.getInputs().isEmpty()
+            && target.getOrderOnlyInputs().isEmpty()
+            && target.getImplicitInputs().isEmpty()) {
+          generators.add(output);
+        } else {
+          targetsInputs.putAll(output, target.getInputs());
+          targetsInputs.putAll(output, target.getOrderOnlyInputs());
+          targetsInputs.putAll(output, target.getImplicitInputs());
+        }
       };
       target.getOutputs().forEach(adder);
       target.getImplicitOutputs().forEach(adder);
@@ -319,12 +326,20 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
       iterator.remove();
       Collection<String> inputs = targetsInputs.get(path);
       if (inputs == null || inputs.isEmpty()) {
+        // mark generator to be kept in the graph
+        if (generators.contains(path)) {
+          checkedPf.add(path);
+        }
         continue;
       }
       // only add outputs
       checkedPf.add(path);
       for (String input : inputs) {
-        if (!checkedPf.contains(input) && !queue.contains(input) && targetsInputs.containsKey(input)) {
+        if (generators.contains(input)) {
+          checkedPf.add(input);
+        } else if (!checkedPf.contains(input)
+            && !queue.contains(input)
+            && targetsInputs.containsKey(input)) {
           queue.add(input);
         }
       }
