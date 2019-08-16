@@ -22,16 +22,13 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedMap;
-import com.google.common.collect.ImmutableSortedSet;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Multimaps;
 import com.google.common.collect.Sets;
 import com.google.devtools.build.lib.actions.Artifact;
-import com.google.devtools.build.lib.actions.ArtifactRoot;
 import com.google.devtools.build.lib.actions.CommandLines;
 import com.google.devtools.build.lib.actions.CompositeRunfilesSupplier;
 import com.google.devtools.build.lib.actions.MutableActionGraph.ActionConflictException;
@@ -62,10 +59,8 @@ import com.google.devtools.build.lib.rules.genrule.GenRuleAction;
 import com.google.devtools.build.lib.skyframe.BlacklistedPackagePrefixesValue;
 import com.google.devtools.build.lib.skyframe.PrecomputedValue;
 import com.google.devtools.build.lib.syntax.Type;
-import com.google.devtools.build.lib.vfs.FileSystem;
 import com.google.devtools.build.lib.vfs.Path;
 import com.google.devtools.build.lib.vfs.PathFragment;
-import com.google.devtools.build.lib.vfs.Root;
 import com.google.devtools.build.lib.vfs.RootedPath;
 import com.google.devtools.build.skyframe.SkyFunction.Environment;
 import java.io.IOException;
@@ -701,130 +696,4 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
     return executionInfo;
   }
 
-  private static class RootsContext {
-    private final PathPackageLocator pkgLocator;
-    // private final ArtifactRoot absoluteRoot;
-    private Root workspaceRoot;
-    private final Map<String, Artifact> artifactCache;
-    private final FileSystem fs;
-    private final ImmutableSet<PathFragment> blacklistedPackages;
-    private final AnalysisEnvironment analysisEnvironment;
-    private final Map<PathFragment, Artifact> aliases;
-    private final Set<String> phonyArtifacts;
-    private final Set<String> generatedFiles;
-    private ArtifactRoot execRoot;
-
-    private RootsContext(PathPackageLocator pkgLocator, Path workspaceRoot,
-        ImmutableSet<PathFragment> blacklistedPackages,
-        AnalysisEnvironment analysisEnvironment,
-        Map<PathFragment, Artifact> aliases,
-        Set<String> phonyArtifacts,
-        Set<String> generatedFiles) {
-      this.pkgLocator = pkgLocator;
-      this.workspaceRoot = Root.fromPath(workspaceRoot);
-      this.blacklistedPackages = blacklistedPackages;
-      this.analysisEnvironment = analysisEnvironment;
-      this.aliases = aliases;
-      this.phonyArtifacts = phonyArtifacts;
-      this.generatedFiles = generatedFiles;
-      artifactCache = Maps.newHashMap();
-      fs = pkgLocator.getOutputBase().getFileSystem();
-    }
-
-    public ImmutableList<String> maybeReplaceAliases(ImmutableList<String> paths) {
-      ImmutableList.Builder<String> builder = ImmutableList.builder();
-      for (String path : paths) {
-        builder.add(maybeReplaceAlias(path));
-      }
-      return builder.build();
-    }
-
-    public String maybeReplaceAlias(String path) {
-      Artifact alias = aliases.get(PathFragment.create(path));
-      if (alias != null) {
-        return alias.getPath().asFragment().getPathString();
-      }
-      return path;
-    }
-
-    public void addArtifacts(NestedSetBuilder<Artifact> builder,
-        String path, boolean isInput) throws IOException {
-      PathFragment fragment = PathFragment.create(path);
-      Preconditions.checkArgument(fragment.segmentCount() > 0);
-
-      Artifact mappedArtifact = aliases.get(fragment);
-      if (mappedArtifact != null) {
-        builder.add(mappedArtifact);
-        return;
-      }
-
-      Path fsPath;
-      if (fragment.isAbsolute()) {
-        fsPath = fs.getPath(fragment);
-      } else {
-        fsPath = workspaceRoot.getRelative(fragment);
-      }
-
-      // todo better use path fragments for comparing paths
-      if (isInput && !generatedFiles.contains(path)) {
-        if (fsPath.isDirectory()) {
-          return;
-        }
-        // todo use path fragments for comparison
-        if (phonyArtifacts.contains(path) && !fsPath.exists()) {
-          // do not register this always dirty dependency;
-          // todo in future, make it always dirty
-          return;
-        }
-        Root sourceRoot = getSourceRoot(fragment, fsPath);
-        if (sourceRoot != null) {
-          builder.add(analysisEnvironment
-              .getSourceArtifact(sourceRoot.relativize(fsPath), sourceRoot));
-          return;
-        }
-      }
-      String artifactPathString = fsPath.asFragment().getPathString();
-      Artifact cachedArtifact = artifactCache.get(artifactPathString);
-      if (cachedArtifact != null) {
-        builder.add(cachedArtifact);
-        return;
-      }
-      // Otherwise, this can be .intermediate artifact, either input of output.
-      execRoot = ArtifactRoot.underWorkspaceOutputRoot(workspaceRoot.asPath(),
-          PathFragment.EMPTY_FRAGMENT);
-      Path rootPath = execRoot.getRoot().getRelative(execRoot.getExecPath());
-      Artifact artifact;
-      if (fsPath.asFragment().startsWith(rootPath.asFragment())) {
-        artifact = analysisEnvironment
-            .getUnderWorkspaceArtifact(fsPath.relativeTo(rootPath), execRoot);
-      } else {
-        artifact = analysisEnvironment
-            .getSourceArtifact(fsPath.asFragment(), Root.absoluteRoot(fs));
-      }
-      artifactCache.put(artifactPathString, artifact);
-      builder.add(artifact);
-    }
-
-    @Nullable
-    private Root getSourceRoot(PathFragment fragment, Path fsPath) {
-      if (!fsPath.exists()) {
-        return null;
-      }
-      // for (PathFragment blacklistedPackage : blacklistedPackages) {
-      //   if (fragment.startsWith(blacklistedPackage)
-      //       // todo this is a temporary hack for the external directory under sources
-      //       && !"external".equals(blacklistedPackage.getPathString())) {
-      //     return null;
-      //   }
-      // }
-
-      ImmutableList<Root> pathEntries = pkgLocator.getPathEntries();
-      for (Root pathEntry : pathEntries) {
-        if (pathEntry.contains(fsPath)) {
-          return pathEntry;
-        }
-      }
-      return null;
-    }
-  }
 }
