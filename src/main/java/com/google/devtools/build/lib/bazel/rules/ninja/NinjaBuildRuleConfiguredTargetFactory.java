@@ -345,7 +345,8 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
       }
     }
     List<NinjaTarget> filteredTargets = targets.stream()
-        .filter(t -> t.getOutputs().stream().anyMatch(checkedPf::contains))
+        .filter(t -> t.getOutputs().stream().anyMatch(checkedPf::contains) ||
+            t.getImplicitOutputs().stream().anyMatch(checkedPf::contains))
         .collect(Collectors.toList());
 
     return replaceAliases(filteredTargets);
@@ -593,7 +594,12 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
         .addLabelMap(labelMap.build())
         .build();
 
-    String command = replaceParameters(target, rule, variables, target.getVariables(), rootsContext::maybeReplaceAliases);
+    ImmutableMap<String, String> replacedParameters =
+        replaceParameters(target, rule, variables, target.getVariables(), rootsContext::maybeReplaceAliases);
+    String command = replaceEscapedSequences(replacedParameters.get(ParameterName.command.name()));
+    if (replacedParameters.containsKey("rspfile")) {
+      command = wrapWithRspFile(command, replacedParameters);
+    }
     String outPath = String.join(", ", target.getOutputs());
     List<String> argv = commandHelper.buildCommandLine(shExecutable,
         command,
@@ -614,6 +620,14 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
 
     ruleContext.registerAction(action);
     return filesToBuild;
+  }
+
+  private static String wrapWithRspFile(String command, ImmutableMap<String, String> parameters) {
+    String prefix = String.format("echo \"%s\">%s && ",
+        parameters.get("rspfile_content"),
+        parameters.get("rspfile"));
+    String postfix = String.format(" && rm \"%s\"", parameters.get("rspfile"));
+    return prefix + command + postfix;
   }
 
   private static NinjaTarget replaceTargetVariables(NinjaTarget target,
@@ -662,7 +676,7 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
   }
 
   @VisibleForTesting
-  public static String replaceParameters(NinjaTarget target, NinjaRule rule,
+  public static ImmutableSortedMap<String, String> replaceParameters(NinjaTarget target, NinjaRule rule,
       ImmutableSortedMap<String, String> variables,
       ImmutableSortedMap<String, String> targetVariables,
       Function<ImmutableList<String>, ImmutableList<String>> replacer)
@@ -678,7 +692,8 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
 
     ImmutableSortedMap<String, String> replacedParameters = replaceVariablesInVariables(
         variables, ImmutableSortedMap.copyOf(parameters));
-    return replaceEscapedSequences(replacedParameters.get(ParameterName.command.name()));
+    return replacedParameters;
+    // return replaceEscapedSequences(replacedParameters.get(ParameterName.command.name()));
   }
 
   private static String replaceEscapedSequences(String text) {
