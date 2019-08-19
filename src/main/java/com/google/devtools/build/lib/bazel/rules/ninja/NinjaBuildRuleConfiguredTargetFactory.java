@@ -635,7 +635,8 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
     // todo later, also have clean-up action to remove .rsp file
     Artifact rspFileArtifact = rootsContext.createUnderWorkspaceArtifact(parameters.get("rspfile"));
     ruleContext.registerAction(FileWriteAction
-        .create(ruleContext, rspFileArtifact, parameters.get("rspfile_content"), false));
+        .create(ruleContext, rspFileArtifact,
+            replaceEscapedSequences(parameters.get("rspfile_content")), false));
     inputsBuilder.add(rspFileArtifact);
   }
 
