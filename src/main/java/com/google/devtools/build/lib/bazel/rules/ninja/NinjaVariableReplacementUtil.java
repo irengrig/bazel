@@ -15,9 +15,13 @@
 
 package com.google.devtools.build.lib.bazel.rules.ninja;
 
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSortedMap;
+import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
+import com.google.devtools.build.lib.util.Pair;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -96,28 +100,54 @@ public class NinjaVariableReplacementUtil {
         throw new NinjaFileFormatException(String.format("Empty variable name in: '%s'.", string));
       }
 
-      String value = changeable.get(name);
-      if (recursive && value != null) {
-        requested.add(name);
-        value = replaceVariablesInString(value, readOnly, changeable, requested, true);
-        // As we successfully replaced the variable, the possible next calls for replacing
-        // adjacent variables do not have it on stack
-        requested.remove(name);
-        changeable.put(name, value);
-      }
-      if (value == null) {
-        value = readOnly.get(name);
-      }
-      if (value == null) {
-        // TODO(ichern) should it be an option/warning?
-        value = "";
-        // throw new NinjaFileFormatException(String.format("Variable '%s' is not defined.", name));
-      }
+      boolean exact = sb.substring(startIdx, startIdx + 2).equals("${");
+      Pair<String, String> pair = replace(readOnly, changeable, requested, recursive, name, exact);
 
-      sb.replace(startIdx, endIdx + 1, value);
-      startIdx = (startIdx + value.length());
+      int endIdxForReplace = exact ? (endIdx + 1) : (startIdx + pair.getFirst().length() + 1);
+      sb.replace(startIdx, endIdxForReplace, pair.getSecond());
+      startIdx = (startIdx + pair.getSecond().length());
     }
     return sb.toString();
   }
 
+  private static Pair<String, String> replace(ImmutableSortedMap<String, String> readOnly,
+      Map<String, String> changeable, Set<String> requested, boolean recursive, String name,
+      boolean exact)
+      throws NinjaFileFormatException {
+    List<String> possibleNames = exact ? ImmutableList.of(name) : possibleNames(name);
+    for (String possibleName : possibleNames) {
+      String value = changeable.get(possibleName);
+      if (recursive && value != null) {
+        requested.add(possibleName);
+        value = replaceVariablesInString(value, readOnly, changeable, requested, true);
+        // As we successfully replaced the variable, the possible next calls for replacing
+        // adjacent variables do not have it on stack
+        requested.remove(possibleName);
+        changeable.put(possibleName, value);
+      }
+      if (value == null) {
+        value = readOnly.get(possibleName);
+      }
+      if (value != null) {
+        return Pair.of(possibleName, value);
+      }
+    }
+    // todo still bad
+    return Pair.of(possibleNames.get(possibleNames.size() - 1), "");
+  }
+
+  private static List<String> possibleNames(String name) {
+    List<String> result = Lists.newArrayList();
+    result.add(name);
+    while (!name.isEmpty()) {
+      int idx = name.lastIndexOf(".");
+      if (idx > 0) {
+        name = name.substring(0, idx);
+        result.add(name);
+      } else {
+        name = "";
+      }
+    }
+    return result;
+  }
 }

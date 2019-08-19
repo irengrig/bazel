@@ -347,18 +347,41 @@ public class NinjaTargetsFunctionTest {
     ImmutableSortedMap<String, NinjaRule> rules = ninjaTargetsValue.getRules();
     assertThat(rules).hasSize(1);
 
-    String command = NinjaBuildRuleConfiguredTargetFactory
+    ImmutableSortedMap<String, String> replaced = NinjaBuildRuleConfiguredTargetFactory
         .replaceParameters(targets.get(0), rules.get("C_SHARED_LIBRARY_LINKER__c-ares"),
             ImmutableSortedMap.of(),
             ImmutableSortedMap.of(), Function.identity());
 
     ImmutableSet<String> variables = ImmutableSet.of("LINK_LIBRARIES", "OBJECT_DIR", "POST_BUILD",
         "PRE_LINK", "SONAME", "SONAME_FLAG", "TARGET_COMPILE_PDB", "TARGET_FILE", "TARGET_PDB");
+    String command = replaced.get("command");
 
     for (String variable : variables) {
       assertThat(command).doesNotContain(variable);
     }
     System.out.println("command: " + command);
+  }
+
+  @Test
+  public void testRspFileInRule() throws Exception {
+    NinjaTargetsValue.Builder builder = NinjaTargetsValue.builder();
+    String rulesText = "rule rule123\n  command = executable @$out.rsp";
+    NinjaTargetsFunction.parseTargetExpression(Arrays.asList((rulesText).split("\n")), builder);
+    String targetsText = "build target1: rule123\n  rspfile=$out.rsp\n  rspfile_content=something";
+    NinjaTargetsFunction.parseTargetExpression(Arrays.asList((targetsText).split("\n")), builder);
+
+    NinjaTargetsValue ninjaTargetsValue = builder.build();
+    List<NinjaTarget> targets = ninjaTargetsValue.getTargets();
+    assertThat(targets).hasSize(1);
+    ImmutableSortedMap<String, NinjaRule> rules = ninjaTargetsValue.getRules();
+    assertThat(rules).hasSize(1);
+
+    ImmutableSortedMap<String, String> replaced = NinjaBuildRuleConfiguredTargetFactory
+        .replaceParameters(targets.get(0), rules.get("rule123"),
+            ImmutableSortedMap.of(),
+            targets.get(0).getVariables(), Function.identity());
+    assertThat(replaced.get("rspfile")).isEqualTo("target1.rsp");
+    assertThat(replaced.get("command")).isEqualTo("executable @target1.rsp");
   }
 
   private TokenProcessor expect(String text, Runnable r) {
