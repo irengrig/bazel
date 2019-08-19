@@ -65,6 +65,7 @@ import com.google.devtools.build.lib.vfs.RootedPath;
 import com.google.devtools.build.skyframe.SkyFunction.Environment;
 import java.io.IOException;
 import java.util.ArrayDeque;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
@@ -597,8 +598,13 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
     ImmutableMap<String, String> replacedParameters =
         replaceParameters(target, rule, variables, target.getVariables(), rootsContext::maybeReplaceAliases);
     String command = replaceEscapedSequences(replacedParameters.get(ParameterName.command.name()));
-    if (replacedParameters.containsKey("rspfile")) {
-      command = wrapWithRspFile(command, replacedParameters);
+    // todo cd here is not an error, apparently, running from exec root is not the same as from the workspace root
+    // todo however for now also just a hack to move on
+    command = String.format("cd %s && ", rootsContext.getWorkspaceRoot().asPath().getPathString())
+        + command;
+    if (replacedParameters.containsKey("rspfile")
+        && !replacedParameters.get("rspfile").trim().isEmpty()) {
+      addRspFile(ruleContext, rootsContext, replacedParameters, inputsBuilder);
     }
     String outPath = String.join(", ", target.getOutputs());
     List<String> argv = commandHelper.buildCommandLine(shExecutable,
@@ -616,18 +622,21 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
         ruleContext.getConfiguration().getActionEnvironment(),
         ImmutableMap.copyOf(createExecutionInfo(ruleContext)),
         CompositeRunfilesSupplier.fromSuppliers(commandHelper.getToolsRunfilesSuppliers()),
-        String.format("Ninja: building '%s'", outPath));
+        String.format("Bazel: building Ninja target: '%s'", outPath));
 
     ruleContext.registerAction(action);
     return filesToBuild;
   }
 
-  private static String wrapWithRspFile(String command, ImmutableMap<String, String> parameters) {
-    String prefix = String.format("echo \"%s\">%s && ",
-        parameters.get("rspfile_content"),
-        parameters.get("rspfile"));
-    String postfix = String.format(" && rm \"%s\"", parameters.get("rspfile"));
-    return prefix + command + postfix;
+  private static void addRspFile(RuleContext ruleContext,
+      RootsContext rootsContext,
+      ImmutableMap<String, String> parameters,
+      NestedSetBuilder<Artifact> inputsBuilder) {
+    // todo later, also have clean-up action to remove .rsp file
+    Artifact rspFileArtifact = rootsContext.createUnderWorkspaceArtifact(parameters.get("rspfile"));
+    ruleContext.registerAction(FileWriteAction
+        .create(ruleContext, rspFileArtifact, parameters.get("rspfile_content"), false));
+    inputsBuilder.add(rspFileArtifact);
   }
 
   private static NinjaTarget replaceTargetVariables(NinjaTarget target,

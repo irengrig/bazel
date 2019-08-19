@@ -397,10 +397,10 @@ public class NinjaBlackBoxTest extends AbstractBlackBoxTest {
   }
 
   private void assertBuildExecuted(ProcessResult result) {
-    assertThat(result.errString()).contains("INFO: From Ninja: building ");
+    assertThat(result.errString()).contains("INFO: From Bazel: building Ninja target:");
   }
 
   private void assertBuildCached(ProcessResult result) {
-    assertThat(result.errString()).doesNotContain("INFO: From Ninja: building ");
+    assertThat(result.errString()).doesNotContain("INFO: From Bazel: building Ninja target:");
   }
 }

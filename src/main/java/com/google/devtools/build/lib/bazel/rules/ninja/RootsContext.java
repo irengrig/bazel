@@ -18,6 +18,7 @@ package com.google.devtools.build.lib.bazel.rules.ninja;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.ImmutableSortedSet;
 import com.google.common.collect.Maps;
 import com.google.devtools.build.lib.actions.Artifact;
 import com.google.devtools.build.lib.actions.ArtifactRoot;
@@ -61,6 +62,11 @@ class RootsContext {
     this.generatedFiles = generatedFiles;
     artifactCache = Maps.newHashMap();
     fs = pkgLocator.getOutputBase().getFileSystem();
+    execRoot = ArtifactRoot.underWorkspaceOutputRoot(workspaceRoot, PathFragment.EMPTY_FRAGMENT);
+  }
+
+  public Root getWorkspaceRoot() {
+    return workspaceRoot;
   }
 
   public ImmutableList<String> maybeReplaceAliases(ImmutableList<String> paths) {
@@ -90,12 +96,7 @@ class RootsContext {
       return;
     }
 
-    Path fsPath;
-    if (fragment.isAbsolute()) {
-      fsPath = fs.getPath(fragment);
-    } else {
-      fsPath = workspaceRoot.getRelative(fragment);
-    }
+    Path fsPath = getFsPath(fragment);
 
     // todo better use path fragments for comparing paths
     if (isInput && !generatedFiles.contains(path)) {
@@ -122,8 +123,8 @@ class RootsContext {
       return;
     }
     // Otherwise, this can be .intermediate artifact, either input of output.
-    execRoot = ArtifactRoot.underWorkspaceOutputRoot(workspaceRoot.asPath(),
-        PathFragment.EMPTY_FRAGMENT);
+    // execRoot = ArtifactRoot.underWorkspaceOutputRoot(workspaceRoot.asPath(),
+    //     PathFragment.EMPTY_FRAGMENT);
     Path rootPath = execRoot.getRoot().getRelative(execRoot.getExecPath());
     Artifact artifact;
     if (fsPath.asFragment().startsWith(rootPath.asFragment())) {
@@ -135,6 +136,22 @@ class RootsContext {
     }
     artifactCache.put(artifactPathString, artifact);
     builder.add(artifact);
+  }
+
+  private Path getFsPath(PathFragment fragment) {
+    Path fsPath;
+    if (fragment.isAbsolute()) {
+      fsPath = fs.getPath(fragment);
+    } else {
+      fsPath = workspaceRoot.getRelative(fragment);
+    }
+    return fsPath;
+  }
+
+  Artifact createUnderWorkspaceArtifact(String path) {
+    // todo this is a hack here
+    return analysisEnvironment
+        .getUnderWorkspaceArtifact(PathFragment.create(path), execRoot);
   }
 
   @Nullable
