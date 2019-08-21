@@ -19,6 +19,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableSortedMap;
 import com.google.common.collect.Lists;
+import com.google.devtools.build.lib.actions.FileStateValue;
 import com.google.devtools.build.lib.bazel.rules.ninja.NinjaRule.ParameterName;
 import com.google.devtools.build.lib.util.Pair;
 import com.google.devtools.build.lib.vfs.RootedPath;
@@ -39,6 +40,12 @@ public class NinjaTargetsFunction implements SkyFunction {
       throws SkyFunctionException, InterruptedException {
     NinjaTargetsValue.Key actionsValueKey = (NinjaTargetsValue.Key) skyKey;
     RootedPath rootedPath = actionsValueKey.getPath();
+
+    // register dependency on file state
+    env.getValue(FileStateValue.key(rootedPath));
+    if (env.valuesMissing()) {
+      return null;
+    }
 
     NinjaTargetsValue.Builder builder = NinjaTargetsValue.builder();
     parseFileFragmentForNinjaTargets(actionsValueKey, rootedPath, builder);

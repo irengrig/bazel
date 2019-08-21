@@ -31,6 +31,7 @@ import com.google.common.collect.Sets;
 import com.google.devtools.build.lib.actions.Artifact;
 import com.google.devtools.build.lib.actions.CommandLines;
 import com.google.devtools.build.lib.actions.CompositeRunfilesSupplier;
+import com.google.devtools.build.lib.actions.FileStateValue;
 import com.google.devtools.build.lib.actions.MutableActionGraph.ActionConflictException;
 import com.google.devtools.build.lib.analysis.AliasProvider;
 import com.google.devtools.build.lib.analysis.AnalysisEnvironment;
@@ -65,7 +66,6 @@ import com.google.devtools.build.lib.vfs.RootedPath;
 import com.google.devtools.build.skyframe.SkyFunction.Environment;
 import java.io.IOException;
 import java.util.ArrayDeque;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
@@ -570,14 +570,14 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
     NestedSetBuilder<Artifact> inputsBuilder = NestedSetBuilder.stableOrder();
 
     ImmutableMap.Builder<Label, NestedSet<Artifact>> labelMap = ImmutableMap.builder();
-    for (TransitiveInfoCollection dep : ruleContext.getPrerequisites("srcs", Mode.TARGET)) {
-      NestedSet<Artifact> files = dep.getProvider(FileProvider.class).getFilesToBuild();
-      inputsBuilder.addTransitive(files);
-      labelMap.put(AliasProvider.getDependencyLabel(dep), files);
-    }
-    TransitiveInfoCollection buildNinja = ruleContext.getPrerequisite("build_ninja", Mode.TARGET);
-    NestedSet<Artifact> files = buildNinja.getProvider(FileProvider.class).getFilesToBuild();
-    inputsBuilder.addTransitive(files);
+    // for (TransitiveInfoCollection dep : ruleContext.getPrerequisites("srcs", Mode.TARGET)) {
+    //   NestedSet<Artifact> files = dep.getProvider(FileProvider.class).getFilesToBuild();
+    //   inputsBuilder.addTransitive(files);
+    //   labelMap.put(AliasProvider.getDependencyLabel(dep), files);
+    // }
+    // TransitiveInfoCollection buildNinja = ruleContext.getPrerequisite("build_ninja", Mode.TARGET);
+    // NestedSet<Artifact> files = buildNinja.getProvider(FileProvider.class).getFilesToBuild();
+    // inputsBuilder.addTransitive(files);
 
     // ImmutableSortedMap<String, String> targetVariables = replaceVariablesInVariables(
     //     variables, ImmutableSortedMap.copyOf(target.getVariables()));
