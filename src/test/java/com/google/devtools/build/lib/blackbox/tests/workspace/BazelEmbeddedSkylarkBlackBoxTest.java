@@ -20,7 +20,7 @@ import com.google.devtools.build.lib.bazel.repository.DecompressorDescriptor;
 import com.google.devtools.build.lib.bazel.repository.TarFunction;
 import com.google.devtools.build.lib.blackbox.framework.BlackBoxTestEnvironment;
 import com.google.devtools.build.lib.blackbox.framework.BuilderRunner;
-import com.google.devtools.build.lib.blackbox.framework.PathUtils;
+import com.google.devtools.build.lib.util.io.process.PathUtils;
 import com.google.devtools.build.lib.blackbox.junit.AbstractBlackBoxTest;
 import com.google.devtools.build.lib.vfs.FileSystem;
 import com.google.devtools.build.lib.vfs.util.FileSystems;

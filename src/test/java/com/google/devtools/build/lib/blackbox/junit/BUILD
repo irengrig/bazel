@@ -26,6 +26,7 @@ java_library(
     srcs = glob(["*.java"]),
     visibility = ["//src/test/java/com/google/devtools/build/lib/blackbox/tests:__pkg__"],
     deps = [
+        "//src/main/java/com/google/devtools/build/lib:io_process",
         "//src/test/java/com/google/devtools/build/lib/blackbox:base_deps",
         "//src/test/java/com/google/devtools/build/lib/blackbox:test_deps",
         "//src/test/java/com/google/devtools/build/lib/blackbox/bazel:common_tools",

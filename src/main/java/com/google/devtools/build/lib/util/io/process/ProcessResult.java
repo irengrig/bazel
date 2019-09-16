@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package com.google.devtools.build.lib.blackbox.framework;
+package com.google.devtools.build.lib.util.io.process;
 
 import com.google.auto.value.AutoValue;
+import com.google.devtools.build.lib.util.io.process.AutoValue_ProcessParameters;
 import com.google.devtools.build.lib.util.StringUtilities;
 import java.util.List;
 
@@ -26,7 +27,7 @@ public abstract class ProcessResult {
     return new AutoValue_ProcessResult(exitCode, out, err);
   }
 
-  abstract int exitCode();
+  public abstract int exitCode();
 
   abstract List<String> out();
 

@@ -13,7 +13,7 @@
 // limitations under the License.
 //
 
-package com.google.devtools.build.lib.blackbox.framework;
+package com.google.devtools.build.lib.util.io.process;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;

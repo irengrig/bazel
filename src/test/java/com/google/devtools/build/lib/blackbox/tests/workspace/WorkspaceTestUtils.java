@@ -19,7 +19,7 @@ import static com.google.common.truth.Truth.assertThat;
 import com.google.common.base.Preconditions;
 import com.google.devtools.build.lib.blackbox.framework.BlackBoxTestContext;
 import com.google.devtools.build.lib.blackbox.framework.BuilderRunner;
-import com.google.devtools.build.lib.blackbox.framework.PathUtils;
+import com.google.devtools.build.lib.util.io.process.PathUtils;
 import com.google.devtools.build.lib.util.OS;
 import java.io.IOException;
 import java.nio.file.Files;

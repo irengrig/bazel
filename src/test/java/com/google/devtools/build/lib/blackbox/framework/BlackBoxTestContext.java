@@ -19,6 +19,10 @@ import static com.google.common.truth.Truth.assertThat;
 
 import com.google.common.collect.Maps;
 import com.google.devtools.build.lib.util.OS;
+import com.google.devtools.build.lib.util.io.process.PathUtils;
+import com.google.devtools.build.lib.util.io.process.ProcessParameters;
+import com.google.devtools.build.lib.util.io.process.ProcessResult;
+import com.google.devtools.build.lib.util.io.process.ProcessRunner;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;

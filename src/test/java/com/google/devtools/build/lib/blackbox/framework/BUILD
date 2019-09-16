@@ -12,7 +12,10 @@ java_library(
     testonly = 1,
     srcs = glob(["*.java"]),
     visibility = ["//src/test/java/com/google/devtools/build/lib:__subpackages__"],
-    deps = [":deps"],
+    deps = [
+        ":deps",
+        "//src/main/java/com/google/devtools/build/lib:io_process",
+    ],
 )
 
 java_test(
@@ -22,7 +25,10 @@ java_test(
     tags = ["black_box_test"],
     test_class = "com.google.devtools.build.lib.AllTests",
     visibility = ["//src/test/java/com/google/devtools/build/lib/blackbox/tests:__pkg__"],
-    deps = [":deps"],
+    deps = [
+        ":deps",
+        "//src/main/java/com/google/devtools/build/lib:io_process",
+    ],
 )
 
 filegroup(

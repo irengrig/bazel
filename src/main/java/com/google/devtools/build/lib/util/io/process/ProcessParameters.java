@@ -12,11 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package com.google.devtools.build.lib.blackbox.framework;
+package com.google.devtools.build.lib.util.io.process;
 
 import com.google.auto.value.AutoValue;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.devtools.build.lib.util.io.process.AutoValue_ProcessParameters;
 import java.io.File;
 import java.nio.file.Path;
 import java.util.List;

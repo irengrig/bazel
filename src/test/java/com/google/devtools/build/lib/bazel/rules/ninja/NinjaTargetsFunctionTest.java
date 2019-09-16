@@ -24,7 +24,7 @@ import com.google.common.collect.ImmutableSortedMap;
 import com.google.common.collect.Lists;
 import com.google.devtools.build.lib.bazel.rules.ninja.NinjaTargetsFunction.Splitter;
 import com.google.devtools.build.lib.bazel.rules.ninja.NinjaTargetsFunction.TokenProcessor;
-import com.google.devtools.build.lib.blackbox.framework.PathUtils;
+import com.google.devtools.build.lib.util.io.process.PathUtils;
 import com.google.devtools.build.lib.vfs.PathFragment;
 import com.google.devtools.build.lib.vfs.Root;
 import com.google.devtools.build.lib.vfs.RootedPath;

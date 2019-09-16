@@ -18,6 +18,7 @@ import static com.google.common.truth.Truth.assertThat;
 
 import com.google.devtools.build.lib.util.OS;
 import com.google.devtools.build.lib.util.StringUtilities;
+import com.google.devtools.build.lib.util.io.process.PathUtils;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

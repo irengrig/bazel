@@ -16,7 +16,7 @@
 package com.google.devtools.build.lib.blackbox.tests.workspace;
 
 import com.google.devtools.build.lib.blackbox.framework.BlackBoxTestContext;
-import com.google.devtools.build.lib.blackbox.framework.ProcessResult;
+import com.google.devtools.build.lib.util.io.process.ProcessResult;
 import java.nio.file.Path;
 
 /**

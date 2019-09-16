@@ -20,7 +20,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.devtools.build.lib.blackbox.bazel.PythonToolsSetup;
 import com.google.devtools.build.lib.blackbox.framework.BlackBoxTestEnvironment;
 import com.google.devtools.build.lib.blackbox.framework.BuilderRunner;
-import com.google.devtools.build.lib.blackbox.framework.ProcessResult;
+import com.google.devtools.build.lib.util.io.process.ProcessResult;
 import com.google.devtools.build.lib.blackbox.framework.ToolsSetup;
 import com.google.devtools.build.lib.blackbox.junit.AbstractBlackBoxTest;
 import java.io.IOException;

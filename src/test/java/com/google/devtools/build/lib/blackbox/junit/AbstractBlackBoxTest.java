@@ -22,7 +22,7 @@ import com.google.devtools.build.lib.blackbox.bazel.DefaultToolsSetup;
 import com.google.devtools.build.lib.blackbox.bazel.JavaToolsSetup;
 import com.google.devtools.build.lib.blackbox.framework.BlackBoxTestContext;
 import com.google.devtools.build.lib.blackbox.framework.BlackBoxTestEnvironment;
-import com.google.devtools.build.lib.blackbox.framework.PathUtils;
+import com.google.devtools.build.lib.util.io.process.PathUtils;
 import com.google.devtools.build.lib.blackbox.framework.ToolsSetup;
 import com.google.devtools.build.lib.util.OS;
 import java.nio.file.Path;

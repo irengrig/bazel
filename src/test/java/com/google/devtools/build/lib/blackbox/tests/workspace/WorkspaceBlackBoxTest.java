@@ -18,8 +18,8 @@ import static com.google.common.truth.Truth.assertThat;
 
 import com.google.devtools.build.lib.blackbox.framework.BlackBoxTestEnvironment;
 import com.google.devtools.build.lib.blackbox.framework.BuilderRunner;
-import com.google.devtools.build.lib.blackbox.framework.PathUtils;
-import com.google.devtools.build.lib.blackbox.framework.ProcessResult;
+import com.google.devtools.build.lib.util.io.process.PathUtils;
+import com.google.devtools.build.lib.util.io.process.ProcessResult;
 import com.google.devtools.build.lib.blackbox.junit.AbstractBlackBoxTest;
 import java.nio.file.Files;
 import java.nio.file.Path;

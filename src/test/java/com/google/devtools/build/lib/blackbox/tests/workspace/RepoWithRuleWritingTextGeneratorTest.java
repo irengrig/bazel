@@ -17,7 +17,7 @@ package com.google.devtools.build.lib.blackbox.tests.workspace;
 import static com.google.common.truth.Truth.assertThat;
 import static com.google.common.truth.Truth8.assertThat;
 
-import com.google.devtools.build.lib.blackbox.framework.PathUtils;
+import com.google.devtools.build.lib.util.io.process.PathUtils;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

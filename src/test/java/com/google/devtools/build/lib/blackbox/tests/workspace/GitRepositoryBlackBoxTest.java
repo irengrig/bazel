@@ -20,7 +20,7 @@ import static com.google.devtools.build.lib.blackbox.tests.workspace.RepoWithRul
 
 import com.google.devtools.build.lib.blackbox.framework.BlackBoxTestContext;
 import com.google.devtools.build.lib.blackbox.framework.BuilderRunner;
-import com.google.devtools.build.lib.blackbox.framework.PathUtils;
+import com.google.devtools.build.lib.util.io.process.PathUtils;
 import com.google.devtools.build.lib.blackbox.junit.AbstractBlackBoxTest;
 import java.nio.file.Files;
 import java.nio.file.Path;

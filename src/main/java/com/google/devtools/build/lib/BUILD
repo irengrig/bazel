@@ -147,6 +147,22 @@ java_library(
 )
 
 java_library(
+    name = "io_process",
+    srcs = glob(
+        ["util/io/process/*.java"],
+    ),
+    deps = [
+        ":util",
+        "//src/main/java/com/google/devtools/build/lib:os_util",
+        "//third_party:auto_value",
+        "//third_party:guava",
+        "//third_party:jsr305",
+        "//third_party:truth",
+        "//third_party:truth8",
+    ],
+)
+
+java_library(
     name = "out-err",
     srcs = OUT_ERR_SRCS,
 )

@@ -17,7 +17,7 @@ package com.google.devtools.build.lib.bazel.rules.ninja;
 
 import static com.google.common.truth.Truth.assertThat;
 
-import com.google.devtools.build.lib.blackbox.framework.PathUtils;
+import com.google.devtools.build.lib.util.io.process.PathUtils;
 import java.io.File;
 import java.nio.channels.FileChannel;
 import java.nio.file.StandardOpenOption;

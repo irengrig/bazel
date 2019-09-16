@@ -28,10 +28,12 @@ java_library(
         "RunfilesUtil.java",
     ],
     exports = [
+        "//src/main/java/com/google/devtools/build/lib:io_process",
         "//src/test/java/com/google/devtools/build/lib/blackbox:base_deps",
         "//src/test/java/com/google/devtools/build/lib/blackbox/framework",
     ],
     deps = [
+        "//src/main/java/com/google/devtools/build/lib:io_process",
         "//src/test/java/com/google/devtools/build/lib/blackbox:base_deps",
         "//src/test/java/com/google/devtools/build/lib/blackbox/framework",
         "@bazel_tools//tools/java/runfiles",

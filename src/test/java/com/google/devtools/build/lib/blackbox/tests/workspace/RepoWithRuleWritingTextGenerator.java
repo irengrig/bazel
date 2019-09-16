@@ -15,7 +15,7 @@
 
 package com.google.devtools.build.lib.blackbox.tests.workspace;
 
-import com.google.devtools.build.lib.blackbox.framework.PathUtils;
+import com.google.devtools.build.lib.util.io.process.PathUtils;
 import java.io.IOException;
 import java.nio.file.Path;
 
