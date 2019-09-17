@@ -31,7 +31,6 @@ import com.google.common.collect.Sets;
 import com.google.devtools.build.lib.actions.Artifact;
 import com.google.devtools.build.lib.actions.CommandLines;
 import com.google.devtools.build.lib.actions.CompositeRunfilesSupplier;
-import com.google.devtools.build.lib.actions.FileStateValue;
 import com.google.devtools.build.lib.actions.MutableActionGraph.ActionConflictException;
 import com.google.devtools.build.lib.analysis.AliasProvider;
 import com.google.devtools.build.lib.analysis.AnalysisEnvironment;
@@ -597,11 +596,11 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
 
     ImmutableMap<String, String> replacedParameters =
         replaceParameters(target, rule, variables, target.getVariables(), rootsContext::maybeReplaceAliases);
-    String command = replaceEscapedSequences(replacedParameters.get(ParameterName.command.name()));
+    String originalCommand = replaceEscapedSequences(replacedParameters.get(ParameterName.command.name()));
     // todo cd here is not an error, apparently, running from exec root is not the same as from the workspace root
     // todo however for now also just a hack to move on
-    command = String.format("cd %s && ", rootsContext.getWorkspaceRoot().asPath().getPathString())
-        + command;
+    String command = String.format("cd %s && ", rootsContext.getWorkspaceRoot().asPath().getPathString())
+        + originalCommand;
     if (replacedParameters.containsKey("rspfile")
         && !replacedParameters.get("rspfile").trim().isEmpty()) {
       addRspFile(ruleContext, rootsContext, replacedParameters, inputsBuilder);
@@ -613,7 +612,7 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
         target.getOutputs().get(0) + ".ninja.rule.script.sh");
 
     NestedSet<Artifact> filesToBuild = outputsBuilder.build();
-    GenRuleAction action = new GenRuleAction(
+    GenRuleAction action = new NinjaGenRuleAction(
         ruleContext.getActionOwner(),
         ImmutableList.copyOf(commandHelper.getResolvedTools()),
         inputsBuilder.build(),
@@ -622,7 +621,11 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
         ruleContext.getConfiguration().getActionEnvironment(),
         ImmutableMap.copyOf(createExecutionInfo(ruleContext)),
         CompositeRunfilesSupplier.fromSuppliers(commandHelper.getToolsRunfilesSuppliers()),
-        String.format("Bazel: building Ninja target: '%s'", outPath));
+        String.format("Bazel: building Ninja target: '%s'", outPath),
+        rootsContext.getWorkspaceRoot().asPath(),
+        replacedParameters.containsKey("depfile") ?
+            rootsContext.getWorkspaceRoot().getRelative(replacedParameters.get("depfile")) : null,
+        replacedParameters.containsKey("depfile") ? originalCommand : null);
 
     ruleContext.registerAction(action);
     return filesToBuild;
