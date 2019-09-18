@@ -418,4 +418,8 @@ public class CachingAnalysisEnvironment implements AnalysisEnvironment {
   public ActionLookupValue.ActionLookupKey getOwner() {
     return owner;
   }
+
+  public ArtifactFactory getArtifactFactory() {
+    return artifactFactory;
+  }
 }

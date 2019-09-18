@@ -17,7 +17,7 @@ import com.google.common.base.Preconditions;
 import com.google.devtools.build.lib.actions.EnvironmentalExecException;
 import com.google.devtools.build.lib.actions.FileValue;
 import com.google.devtools.build.lib.cmdline.PackageIdentifier;
-import com.google.devtools.build.lib.includescanning.IncludeParser.Hints;
+import com.google.devtools.build.lib.includescanning.IncludeParser.HintsImpl;
 import com.google.devtools.build.lib.packages.BuildFileNotFoundException;
 import com.google.devtools.build.lib.skyframe.ContainingPackageLookupValue;
 import com.google.devtools.build.lib.skyframe.serialization.autocodec.AutoCodec;
@@ -73,7 +73,7 @@ public class IncludeHintsFunction implements SkyFunction {
       return null;
     }
     try {
-      return Hints.getRules(hintsPackageRoot.getRelative(hintsFile));
+      return HintsImpl.getRules(hintsPackageRoot.getRelative(hintsFile));
     } catch (IOException e) {
       throw new IncludeHintsFunctionException(new EnvironmentalExecException(
           "could not read INCLUDE_HINTS file", e));

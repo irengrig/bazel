@@ -42,10 +42,13 @@ import java.util.List;
 import java.util.Set;
 import javax.annotation.Nullable;
 
-/** Runs include scanning on actions, if include scanning is enabled. */
+/**
+ * Runs include scanning on actions, if include scanning is enabled.
+ */
 public class IncludeScanning implements IncludeProcessing {
 
-  @AutoCodec public static final IncludeScanning INSTANCE = new IncludeScanning();
+  @AutoCodec
+  public static final IncludeScanning INSTANCE = new IncludeScanning();
 
   @Nullable
   @Override
@@ -104,19 +107,27 @@ public class IncludeScanning implements IncludeProcessing {
               action,
               actionExecutionContext,
               action.getGrepIncludes());
-      return Futures.transformAsync(
-          future,
-          new AsyncFunction<Object, Iterable<Artifact>>() {
-            @Override
-            public ListenableFuture<Iterable<Artifact>> apply(Object input) throws Exception {
-              return Futures.immediateFuture(
-                  collect(actionExecutionContext, includes, absoluteBuiltInIncludeDirs));
-            }
-          },
-          MoreExecutors.directExecutor());
+      return collectIncludes(future, actionExecutionContext, includes, absoluteBuiltInIncludeDirs);
     } catch (IOException e) {
       throw new EnvironmentalExecException(e);
     }
+  }
+
+  public static ListenableFuture<Iterable<Artifact>> collectIncludes(
+      ListenableFuture<?> future,
+      ActionExecutionContext actionExecutionContext,
+      Set<Artifact> includes,
+      List<PathFragment> absoluteBuiltInIncludeDirs) {
+    return Futures.transformAsync(
+        future,
+        new AsyncFunction<Object, Iterable<Artifact>>() {
+          @Override
+          public ListenableFuture<Iterable<Artifact>> apply(Object input) throws Exception {
+            return Futures.immediateFuture(
+                collect(actionExecutionContext, includes, absoluteBuiltInIncludeDirs));
+          }
+        },
+        MoreExecutors.directExecutor());
   }
 
   private static List<Artifact> collect(

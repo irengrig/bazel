@@ -38,6 +38,7 @@ import com.google.devtools.build.lib.concurrent.ExecutorUtil;
 import com.google.devtools.build.lib.concurrent.ThreadSafety.ThreadHostile;
 import com.google.devtools.build.lib.exec.ActionContextProvider;
 import com.google.devtools.build.lib.exec.ExecutorBuilder;
+import com.google.devtools.build.lib.includescanning.IncludeParser.HintsImpl;
 import com.google.devtools.build.lib.includescanning.IncludeParser.Inclusion;
 import com.google.devtools.build.lib.rules.cpp.CppIncludeExtractionContext;
 import com.google.devtools.build.lib.rules.cpp.CppIncludeScanningContext;
@@ -264,7 +265,7 @@ public class IncludeScanningModule extends BlazeModule {
       try {
         includeScannerSupplier.init(
             new IncludeParser(
-                new IncludeParser.Hints(
+                new HintsImpl(
                     (IncludeParser.HintsRules)
                         env.getSkyframeExecutor()
                             .evaluateSkyKeyForExecutionSetup(

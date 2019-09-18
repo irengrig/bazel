@@ -35,6 +35,7 @@ import com.google.devtools.build.lib.actions.MutableActionGraph.ActionConflictEx
 import com.google.devtools.build.lib.analysis.AliasProvider;
 import com.google.devtools.build.lib.analysis.AnalysisEnvironment;
 import com.google.devtools.build.lib.analysis.BlazeDirectories;
+import com.google.devtools.build.lib.analysis.CachingAnalysisEnvironment;
 import com.google.devtools.build.lib.analysis.CommandHelper;
 import com.google.devtools.build.lib.analysis.ConfiguredTarget;
 import com.google.devtools.build.lib.analysis.FileProvider;
@@ -52,9 +53,16 @@ import com.google.devtools.build.lib.bazel.rules.ninja.NinjaRule.ParameterName;
 import com.google.devtools.build.lib.cmdline.Label;
 import com.google.devtools.build.lib.collect.nestedset.NestedSet;
 import com.google.devtools.build.lib.collect.nestedset.NestedSetBuilder;
+import com.google.devtools.build.lib.concurrent.ExecutorUtil;
+import com.google.devtools.build.lib.includescanning.Hints;
+import com.google.devtools.build.lib.includescanning.IncludeParser;
+import com.google.devtools.build.lib.includescanning.IncludeParser.Inclusion;
+import com.google.devtools.build.lib.includescanning.IncludeScannerSupplierImpl;
+import com.google.devtools.build.lib.includescanning.SpawnIncludeScanner;
 import com.google.devtools.build.lib.packages.BuildType;
 import com.google.devtools.build.lib.packages.TargetUtils;
 import com.google.devtools.build.lib.pkgcache.PathPackageLocator;
+import com.google.devtools.build.lib.rules.cpp.CppHelper;
 import com.google.devtools.build.lib.rules.genrule.GenRuleAction;
 import com.google.devtools.build.lib.skyframe.BlacklistedPackagePrefixesValue;
 import com.google.devtools.build.lib.skyframe.PrecomputedValue;
@@ -66,11 +74,13 @@ import com.google.devtools.build.skyframe.SkyFunction.Environment;
 import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -198,40 +208,75 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
           Preconditions.checkNotNull(blacklistedPrefixes).getPatterns(), analysisEnvironment,
           aliases, phonyArtifacts, generatedFiles);
 
-      for (NinjaTarget target : targets) {
-        String command = target.getCommand();
-        NinjaRule ninjaRule = rules.get(command);
-        if (ninjaRule == null) {
-          ruleContext.getRuleErrorConsumer()
-              .throwWithRuleError("Ninja: no such rule found: " + command);
-        }
-        try {
-          NestedSet<Artifact> filesToBuild = registerNinjaAction(
-              ruleContext, rootsContext, shExecutable, target, ninjaRule, variables);
-          if (executableArtifact == null || !requestedTargets.isEmpty()) {
-            for (Artifact artifact : filesToBuild) {
-              PathFragment currentPathFragment = artifact.getPath().asFragment();
-              Optional<PathFragment> requestedPathFragment = requestedTargets.keySet().stream()
-                  .filter(currentPathFragment::endsWith).findFirst();
-              if (requestedPathFragment.isPresent()) {
-                String outputGroupName =
-                    Preconditions
-                        .checkNotNull(requestedTargets.remove(requestedPathFragment.get()));
-                outputGroups.put(outputGroupName,
-                    NestedSetBuilder.<Artifact>stableOrder().add(artifact).build());
-              }
-              if (executable.equals(artifact.getExecPath())) {
-                executableArtifact = artifact;
+      ThreadPoolExecutor slackPool = ExecutorUtil.newSlackPool(10, "Include scanner");
+      Path execRoot = directories.getExecRoot("");
+      try {
+        Artifact grepIncludes = CppHelper.getGrepIncludes(ruleContext);
+        IncludeScannerSupplierImpl includeScannerSupplier = new IncludeScannerSupplierImpl(
+            directories, slackPool, ((CachingAnalysisEnvironment) analysisEnvironment).getArtifactFactory(),
+            () -> {
+              return new SpawnIncludeScanner(
+                  execRoot,
+                  -1);
+            }, execRoot, false); // todo parameters???
+        includeScannerSupplier.init(new IncludeParser(new Hints() {
+          @Override
+          public Collection<Inclusion> getHintedInclusions(Artifact path) {
+            return Collections.emptyList();
+          }
+
+          @Override
+          public Collection<Artifact> getPathLevelHintedInclusions(
+              ImmutableList<PathFragment> paths, Environment env) {
+            return Collections.emptyList();
+          }
+
+          @Override
+          public Collection<Artifact> getFileLevelHintedInclusionsLegacy(Artifact path) {
+            return Collections.emptyList();
+          }
+
+          @Override
+          public void clearCachedLegacyHints() {
+          }
+        }));
+
+        for (NinjaTarget target : targets) {
+          String command = target.getCommand();
+          NinjaRule ninjaRule = rules.get(command);
+          if (ninjaRule == null) {
+            ruleContext.getRuleErrorConsumer()
+                .throwWithRuleError("Ninja: no such rule found: " + command);
+          }
+            NestedSet<Artifact> filesToBuild = registerNinjaAction(
+                ruleContext, rootsContext, shExecutable, target, ninjaRule, variables,
+                includeScannerSupplier, grepIncludes);
+            if (executableArtifact == null || !requestedTargets.isEmpty()) {
+              for (Artifact artifact : filesToBuild) {
+                PathFragment currentPathFragment = artifact.getPath().asFragment();
+                Optional<PathFragment> requestedPathFragment = requestedTargets.keySet().stream()
+                    .filter(currentPathFragment::endsWith).findFirst();
+                if (requestedPathFragment.isPresent()) {
+                  String outputGroupName =
+                      Preconditions
+                          .checkNotNull(requestedTargets.remove(requestedPathFragment.get()));
+                  outputGroups.put(outputGroupName,
+                      NestedSetBuilder.<Artifact>stableOrder().add(artifact).build());
+                }
+                if (executable.equals(artifact.getExecPath())) {
+                  executableArtifact = artifact;
+                }
               }
             }
+            outputsBuilder.addTransitive(filesToBuild);
+          if (ruleContext.hasErrors()) {
+            return null;
           }
-          outputsBuilder.addTransitive(filesToBuild);
-        } catch (NinjaFileFormatException | IOException e) {
-          ruleContext.getRuleErrorConsumer().throwWithRuleError(e.getMessage());
         }
-        if (ruleContext.hasErrors()) {
-          return null;
-        }
+      } catch (NinjaFileFormatException | IOException e) {
+        ruleContext.getRuleErrorConsumer().throwWithRuleError(e.getMessage());
+      } finally {
+        slackPool.shutdown();
       }
     }
 
@@ -564,7 +609,9 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
       PathFragment shExecutable,
       NinjaTarget target,
       NinjaRule rule,
-      ImmutableSortedMap<String, String> variables) throws NinjaFileFormatException, IOException {
+      ImmutableSortedMap<String, String> variables,
+      IncludeScannerSupplierImpl includeScannerSupplier,
+      Artifact grepIncludes) throws NinjaFileFormatException, IOException {
 
     NestedSetBuilder<Artifact> inputsBuilder = NestedSetBuilder.stableOrder();
 
@@ -625,7 +672,9 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
         rootsContext.getWorkspaceRoot().asPath(),
         replacedParameters.containsKey("depfile") ?
             rootsContext.getWorkspaceRoot().getRelative(replacedParameters.get("depfile")) : null,
-        replacedParameters.containsKey("depfile") ? originalCommand : null);
+        replacedParameters.containsKey("depfile") ? originalCommand : null,
+        includeScannerSupplier,
+        grepIncludes);
 
     ruleContext.registerAction(action);
     return filesToBuild;

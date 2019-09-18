@@ -78,6 +78,7 @@ import javax.annotation.Nullable;
  * caching layer in order to avoid unnecessary disk access when requesting an already scanned file.
  */
 @VisibleForTesting
+public
 class IncludeParser {
 
   /**
@@ -104,7 +105,7 @@ class IncludeParser {
 
   /**
    * Immutable object representation of the four columns making up a single Rule
-   * in a Hints set. See {@link Hints} for more details.
+   * in a Hints set. See {@link HintsImpl} for more details.
    */
   private static class Rule {
     private enum Type { PATH, FILE, INCLUDE_QUOTE, INCLUDE_ANGLE }
@@ -131,7 +132,7 @@ class IncludeParser {
     }
   }
 
-  /** {@link SkyValue} encapsulating the source-state-dependent part of {@link Hints}. */
+  /** {@link SkyValue} encapsulating the source-state-dependent part of {@link HintsImpl}. */
   public static class HintsRules implements SkyValue {
     private final ImmutableList<Rule> rules;
 
@@ -169,7 +170,7 @@ class IncludeParser {
    * <p>The fourth column is a regexp applied to each file found by the recursive listing. All
    * matching files are treated as dependencies.
    */
-  public static class Hints {
+  public static class HintsImpl implements Hints {
     private static final Pattern WS_PAT = Pattern.compile("\\s+");
     @VisibleForTesting
     static final String ALLOWED_PREFIX = "third_party/";
@@ -198,7 +199,7 @@ class IncludeParser {
      *
      * @param hintsRules the {@link HintsRules} parsed from INCLUDE_HINTS
      */
-    public Hints(HintsRules hintsRules, ArtifactFactory artifactFactory) {
+    public HintsImpl(HintsRules hintsRules, ArtifactFactory artifactFactory) {
       this.artifactFactory = artifactFactory;
       this.rules = hintsRules.rules;
       clearCachedLegacyHints();
@@ -239,14 +240,16 @@ class IncludeParser {
      * Clears legacy inclusions cache to maintain inter-build correctness, since filesystem changes
      * are not tracked by cache.
      */
-    void clearCachedLegacyHints() {
+    @Override
+    public void clearCachedLegacyHints() {
       fileLevelHintsCache.invalidateAll();
       syscallCache.set(
           PerBuildSyscallCache.newBuilder().setConcurrencyLevel(HINTS_CACHE_CONCURRENCY).build());
     }
 
     /** Returns the "file" type hinted inclusions for a given path, caching results by path. */
-    Collection<Artifact> getFileLevelHintedInclusionsLegacy(Artifact path) {
+    @Override
+    public Collection<Artifact> getFileLevelHintedInclusionsLegacy(Artifact path) {
       if (!path.getExecPathString().startsWith(ALLOWED_PREFIX)) {
         return ImmutableList.of();
       }
@@ -257,7 +260,8 @@ class IncludeParser {
      * Returns the "path" type hinted inclusions for the given paths. Callers are responsible for
      * caching.
      */
-    Collection<Artifact> getPathLevelHintedInclusions(
+    @Override
+    public Collection<Artifact> getPathLevelHintedInclusions(
         ImmutableList<PathFragment> paths, Environment env) throws InterruptedException {
       return getHintedInclusionsWithSkyframe(Rule.Type.PATH, paths, env);
     }
@@ -458,7 +462,8 @@ class IncludeParser {
       }
     }
 
-    private Collection<Inclusion> getHintedInclusions(Artifact path) {
+    @Override
+    public Collection<Inclusion> getHintedInclusions(Artifact path) {
       String pathString = path.getExecPathString();
       // Delay creation until we know we need one. Use a LinkedHashSet to make sure that the results
       // are sorted with a stable order and unique.

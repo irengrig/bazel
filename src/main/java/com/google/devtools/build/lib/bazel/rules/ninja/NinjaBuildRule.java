@@ -55,6 +55,10 @@ public class NinjaBuildRule implements RuleDefinition {
               .nonconfigurable("File groups settings")
               .setDoc("Map of targets (i.e. file path) to the output group names. "
                   + "It is expected for an output group to have only one contained target."))
+          .add(
+              attr("$grep_includes", LABEL)
+                  .cfg(HostTransition.createFactory())
+                  .value(environment.getToolsLabel("//tools/cpp:grep-includes")))
           .add(attr("executable_target", Type.STRING).defaultValue(""))
           .add(
               attr("$is_executable", BOOLEAN)

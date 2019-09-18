@@ -86,7 +86,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -510,7 +509,8 @@ public class CppCompileAction extends AbstractAction
             /* catastrophe= */ false);
       }
       commandLineKey = computeCommandLineKey(options);
-      List<PathFragment> systemIncludeDirs = getSystemIncludeDirs(options);
+      List<PathFragment> systemIncludeDirs = CppIncludeScanningUtil.getSystemIncludeDirs(
+          options, this::prettyPrint);
       List<CcCompilationContext.HeaderInfo> headerInfo =
           ccCompilationContext.getTransitiveHeaderInfos();
       additionalInputs =
@@ -519,7 +519,7 @@ public class CppCompileAction extends AbstractAction
               ccCompilationContext
                   .createIncludeScanningHeaderData(usePic, useHeaderModules, headerInfo)
                   .setSystemIncludeDirs(systemIncludeDirs)
-                  .setCmdlineIncludes(getCmdlineIncludes(options))
+                  .setCmdlineIncludes(CppIncludeScanningUtil.getCmdlineIncludes(options))
                   .build());
       if (needsIncludeValidation) {
         verifyActionIncludePaths(systemIncludeDirs);
@@ -655,42 +655,7 @@ public class CppCompileAction extends AbstractAction
 
   @VisibleForTesting
   List<PathFragment> getSystemIncludeDirs() throws CommandLineExpansionException {
-    return getSystemIncludeDirs(getCompilerOptions());
-  }
-
-  private List<PathFragment> getSystemIncludeDirs(List<String> compilerOptions) {
-    // TODO(bazel-team): parsing the command line flags here couples us to gcc-style compiler
-    // command lines; use a different way to specify system includes (for example through a
-    // system_includes attribute in cc_toolchain); note that that would disallow users from
-    // specifying system include paths via the copts attribute.
-    // Currently, this works together with the include_paths features because getCommandLine() will
-    // get the system include paths from the {@code CcCompilationContext} instead.
-    ImmutableList.Builder<PathFragment> result = ImmutableList.builder();
-    for (int i = 0; i < compilerOptions.size(); i++) {
-      String opt = compilerOptions.get(i);
-      if (opt.startsWith("-isystem")) {
-        if (opt.length() > 8) {
-          result.add(PathFragment.create(opt.substring(8).trim()));
-        } else if (i + 1 < compilerOptions.size()) {
-          i++;
-          result.add(PathFragment.create(compilerOptions.get(i)));
-        } else {
-          System.err.println("WARNING: dangling -isystem flag in options for " + prettyPrint());
-        }
-      }
-    }
-    return result.build();
-  }
-
-  private List<String> getCmdlineIncludes(List<String> args) {
-    ImmutableList.Builder<String> cmdlineIncludes = ImmutableList.builder();
-    for (Iterator<String> argi = args.iterator(); argi.hasNext();) {
-      String arg = argi.next();
-      if (arg.equals("-include") && argi.hasNext()) {
-        cmdlineIncludes.add(argi.next());
-      }
-    }
-    return cmdlineIncludes.build();
+    return CppIncludeScanningUtil.getSystemIncludeDirs(getCompilerOptions(), this::prettyPrint);
   }
 
   @Override
@@ -1458,7 +1423,7 @@ public class CppCompileAction extends AbstractAction
                   .createIncludeScanningHeaderData(
                       usePic, useHeaderModules, ccCompilationContext.getTransitiveHeaderInfos())
                   .setSystemIncludeDirs(getSystemIncludeDirs())
-                  .setCmdlineIncludes(getCmdlineIncludes(getCompilerOptions()))
+                  .setCmdlineIncludes(CppIncludeScanningUtil.getCmdlineIncludes(getCompilerOptions()))
                   .build());
       return Sets.difference(
           ImmutableSet.copyOf(discoveredInputs), ImmutableSet.copyOf(getInputs()));
