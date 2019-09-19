@@ -87,6 +87,7 @@ public class NinjaGenRuleAction extends GenRuleAction {
       for (Artifact artifact : discoveredInputArtifacts) {
         discoveredInputs.add(artifact.getPath());
       }
+      updateInputs(discoveredInputArtifacts);
       return discoveredInputArtifacts;
     } catch (Exception e) {
       throw new ActionExecutionException(e, this, true);
