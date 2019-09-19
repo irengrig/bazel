@@ -83,6 +83,7 @@ import java.util.Set;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 
@@ -198,7 +199,7 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
         }
         targets = copy;
         targets = filterOnlyNeededTargetsAndReplaceAliases(executable, targets,
-            exportTargets.keySet());
+            exportTargets.keySet(), rules);
       } catch (NinjaFileFormatException e) {
         ruleContext.getRuleErrorConsumer().throwWithRuleError(e.getMessage());
       }
@@ -328,14 +329,15 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
   }
 
   private List<NinjaTarget> filterOnlyNeededTargetsAndReplaceAliases(PathFragment executable,
-      List<NinjaTarget> targets, Set<String> requestedPaths)
+      List<NinjaTarget> targets, Set<String> requestedPaths,
+      ImmutableSortedMap<String, NinjaRule> rules)
       throws NinjaFileFormatException {
     Set<String> queue = Sets.newHashSet(requestedPaths);
     if (executable != null && !executable.isEmpty()) {
       queue.add(executable.getPathString());
     }
     if (queue.isEmpty()) {
-      return replaceAliases(Lists.newArrayList(targets));
+      return replaceAliases(Lists.newArrayList(targets), rules);
     }
 
     Set<String> checkedPf = Sets.newHashSet();
@@ -390,20 +392,31 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
             t.getImplicitOutputs().stream().anyMatch(checkedPf::contains))
         .collect(Collectors.toList());
 
-    return replaceAliases(filteredTargets);
+    return replaceAliases(filteredTargets, rules);
   }
 
   @VisibleForTesting
-  public static List<NinjaTarget> replaceAliases(Collection<NinjaTarget> filteredTargets)
-      throws NinjaFileFormatException {
+  public static List<NinjaTarget> replaceAliases(Collection<NinjaTarget> filteredTargets,
+      ImmutableSortedMap<String, NinjaRule> rules) throws NinjaFileFormatException {
+    Set<String> phonyRules = Sets.newHashSet();
+    for (Map.Entry<String, NinjaRule> entry : rules.entrySet()) {
+      String command = entry.getValue().getParameters().get(ParameterName.command);
+      if (command.trim().startsWith("#")) {
+        phonyRules.add(entry.getKey());
+      }
+    }
     // now replace aliases
     // todo we could also cache that
     Multimap<PathFragment, PathFragment> inputsReplaceMap = Multimaps.newListMultimap(
         Maps.newHashMap(), Lists::newArrayList
     );
+    Predicate<NinjaTarget> isPhony = (target) -> {
+      String command = target.getCommand();
+      return "phony".equals(command) || phonyRules.contains(command);
+    };
 
     for (NinjaTarget ninjaTarget : filteredTargets) {
-      if ("phony".equals(ninjaTarget.getCommand())) {
+      if (isPhony.test(ninjaTarget)) {
         if (ninjaTarget.getInputs().isEmpty()
             && ninjaTarget.getImplicitInputs().isEmpty()
             && ninjaTarget.getOrderOnlyInputs().isEmpty()) {
@@ -423,7 +436,7 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
     }
     NinjaReplaceAliasesUtil.replaceAliasesInAliasesMap(inputsReplaceMap);
     // we do not need aliases any more
-    filteredTargets.removeIf(ninjaTarget -> "phony".equals(ninjaTarget.getCommand()));
+    filteredTargets.removeIf(isPhony);
 
     List<NinjaTarget> replacedAliases = Lists.newArrayListWithCapacity(filteredTargets.size());
     for (NinjaTarget ninjaTarget : filteredTargets) {
