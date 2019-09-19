@@ -266,7 +266,11 @@ public class NinjaBlackBoxTest extends AbstractBlackBoxTest {
         "rule link",
         "  command = $cc $cclinkerflags $in -o $out -v",
         "",
-        "build out/hello.o: compile hello.cxx",
+        "rule custom_phony",
+        " command = # phony $out",
+        "",
+        "build input_alias: custom_phony hello.cxx",
+        "build out/hello.o: compile input_alias",
         "build out/hello: link out/hello.o",
         "",
         "default out/hello");
