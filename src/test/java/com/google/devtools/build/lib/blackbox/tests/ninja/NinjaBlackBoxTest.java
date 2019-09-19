@@ -33,7 +33,7 @@ public class NinjaBlackBoxTest extends AbstractBlackBoxTest {
     context().write("name.txt", "Ninja");
     context().write("build.ninja",
         "rule echo",
-        "  command = echo \"Hello from $$(cat $in)!\">$out && echo \"One more command!\">> $out",
+        "  command = bash -x -c 'bash -x -c '\\\''echo \"Hello from $$(cat $in)!\">$out && echo \"One more command!\">> $out'\\\'' ' ",
         "",
         "build out/hello.txt: echo name.txt",
         "",
