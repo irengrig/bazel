@@ -214,11 +214,7 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
         Artifact grepIncludes = CppHelper.getGrepIncludes(ruleContext);
         IncludeScannerSupplierImpl includeScannerSupplier = new IncludeScannerSupplierImpl(
             directories, slackPool, ((CachingAnalysisEnvironment) analysisEnvironment).getArtifactFactory(),
-            () -> {
-              return new SpawnIncludeScanner(
-                  execRoot,
-                  -1);
-            }, execRoot, false); // todo parameters???
+            () -> new SpawnIncludeScanner(execRoot, Integer.MAX_VALUE), execRoot, false); // todo parameters???
         includeScannerSupplier.init(new IncludeParser(new Hints() {
           @Override
           public Collection<Inclusion> getHintedInclusions(Artifact path) {

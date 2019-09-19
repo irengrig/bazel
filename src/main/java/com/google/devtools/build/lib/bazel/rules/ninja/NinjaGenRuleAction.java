@@ -120,7 +120,9 @@ public class NinjaGenRuleAction extends GenRuleAction {
       ListenableFuture<Iterable<Artifact>> future = IncludeScanning
           .collectIncludes(listenableFuture, actionExecutionContext,
               includes, ImmutableList.of());
-      return future.get();
+      Iterable<Artifact> artifacts = future.get();
+      updateInputs(artifacts);
+      return artifacts;
     } catch (ExecutionException | IOException | ExecException e) {
       throw new ActionExecutionException(e, this, true);
     }
@@ -147,6 +149,11 @@ public class NinjaGenRuleAction extends GenRuleAction {
 
   @Override
   protected void afterExecute(ActionExecutionContext actionExecutionContext) {
+    //checkInputPaths();
+    super.afterExecute(actionExecutionContext);
+  }
+
+  private void checkInputPaths() {
     if (depfilePath != null && rawCommandLine != null) {
       DependencySet dependencySet;
       try {
@@ -170,7 +177,6 @@ public class NinjaGenRuleAction extends GenRuleAction {
         }
       }
     }
-    super.afterExecute(actionExecutionContext);
   }
 
   // todo describeKey() can be overloaded to create always-dirty actions if we ever need them
