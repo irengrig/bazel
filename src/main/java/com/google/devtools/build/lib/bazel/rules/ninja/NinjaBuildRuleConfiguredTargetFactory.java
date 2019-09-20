@@ -19,10 +19,12 @@ import static com.google.devtools.build.lib.bazel.rules.ninja.NinjaVariableRepla
 import static com.google.devtools.build.lib.bazel.rules.ninja.NinjaVariableReplacementUtil.replaceVariablesInVariables;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSortedMap;
+import com.google.common.collect.ListMultimap;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Multimap;
@@ -52,6 +54,7 @@ import com.google.devtools.build.lib.bazel.rules.ninja.NinjaRule.ParameterName;
 import com.google.devtools.build.lib.cmdline.Label;
 import com.google.devtools.build.lib.collect.nestedset.NestedSet;
 import com.google.devtools.build.lib.collect.nestedset.NestedSetBuilder;
+import com.google.devtools.build.lib.collect.nestedset.Order;
 import com.google.devtools.build.lib.packages.BuildType;
 import com.google.devtools.build.lib.packages.TargetUtils;
 import com.google.devtools.build.lib.pkgcache.PathPackageLocator;
@@ -75,6 +78,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.annotation.Nullable;
 
 public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTargetFactory {
@@ -149,7 +153,7 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
     Map<String, NestedSet<Artifact>> outputGroups = null;
 
     Artifact executableArtifact = null;
-    if (!ONLY_READ_FILE) {
+    if (true) {
       try {
         variables = replaceVariablesInVariables(ImmutableSortedMap.of(), variables);
       } catch (NinjaFileFormatException e) {
@@ -254,7 +258,8 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
         runfilesBuilder.build());
 
     RuleConfiguredTargetBuilder builder = new RuleConfiguredTargetBuilder(ruleContext)
-        .setFilesToBuild(transitiveOutputs)
+        .setFilesToBuild(ONLY_READ_FILE ? NestedSetBuilder.<Artifact>stableOrder().build()
+            : transitiveOutputs)
         .setRunfilesSupport(null, executableArtifact)
         .addProvider(RunfilesProvider.class, runfilesProvider);
     if (outputGroups != null) {
@@ -383,17 +388,27 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
           continue;
         }
         PathFragment alias = PathFragment.create(ninjaTarget.getOutputs().get(0));
-        List<PathFragment> inputs = Lists.newArrayList();
-
-        Consumer<String> consumer = p -> inputs.add(PathFragment.create(p));
-        ninjaTarget.getInputs().forEach(consumer);
-        ninjaTarget.getImplicitInputs().forEach(consumer);
-        ninjaTarget.getOrderOnlyInputs().forEach(consumer);
+        List<PathFragment> inputs = getTargetInputs(ninjaTarget);
 
         inputsReplaceMap.putAll(alias, inputs);
       }
     }
+    ListMultimap<PathFragment, PathFragment> copy = Multimaps.newListMultimap(
+        Maps.newHashMap(), Lists::newArrayList
+    );
+    copy.putAll(inputsReplaceMap);
+
     NinjaReplaceAliasesUtil.replaceAliasesInAliasesMap(inputsReplaceMap);
+
+    checkAliasesReplacementInAliasesMap(inputsReplaceMap, copy);
+
+    Set<String> phonyOutputs = Sets.newHashSet();
+    filteredTargets.parallelStream()
+        .filter(isPhony)
+        .forEach(t -> {
+          phonyOutputs.addAll(t.getOutputs());
+          phonyOutputs.addAll(t.getImplicitOutputs());
+        });
     // we do not need aliases any more
     filteredTargets.removeIf(isPhony);
 
@@ -417,8 +432,46 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
         replacedAliases.add(newTarget);
       }
     }
+    checkAliasesReplacementsInTargets(phonyOutputs, replacedAliases);
 
     return replacedAliases;
+  }
+
+  private static void checkAliasesReplacementsInTargets(Set<String> phonyOutputs,
+      List<NinjaTarget> replacedAliases) {
+    for (NinjaTarget target : replacedAliases) {
+      List<PathFragment> inputs = getTargetInputs(target);
+      for (PathFragment input : inputs) {
+        String pathString = input.getPathString();
+        if (phonyOutputs.contains(pathString)) {
+          System.out.println("ALIAS NOT REPLACED IN ALIAS: " + pathString +
+              ", referenced from: " + Joiner.on(", ").join(target.getOutputs()));
+        }
+      }
+    }
+  }
+
+  private static void checkAliasesReplacementInAliasesMap(
+      Multimap<PathFragment, PathFragment> inputsReplaceMap,
+      ListMultimap<PathFragment, PathFragment> copy) {
+    for (Map.Entry<PathFragment, PathFragment> entry : inputsReplaceMap.entries()) {
+      if (inputsReplaceMap.containsKey(entry.getValue())) {
+        System.out.println("ALIAS NOT REPLACED IN TARGET: " + entry.getValue() + " for " +
+                entry.getKey() + " with value: " +
+            inputsReplaceMap.get(entry.getKey()) +
+            ", value before replace: " + copy.get(entry.getKey()));
+      }
+    }
+  }
+
+  private static List<PathFragment> getTargetInputs(NinjaTarget ninjaTarget) {
+    List<PathFragment> inputs = Lists.newArrayList();
+
+    Consumer<String> consumer = p -> inputs.add(PathFragment.create(p));
+    ninjaTarget.getInputs().forEach(consumer);
+    ninjaTarget.getImplicitInputs().forEach(consumer);
+    ninjaTarget.getOrderOnlyInputs().forEach(consumer);
+    return inputs;
   }
 
   private static ImmutableList<String> selectNonNull(

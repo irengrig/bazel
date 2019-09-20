@@ -15,57 +15,46 @@
 
 package com.google.devtools.build.lib.bazel.rules.ninja;
 
-import com.google.common.collect.Lists;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Sets;
 import com.google.devtools.build.lib.vfs.PathFragment;
 import java.util.Collection;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 public class NinjaReplaceAliasesUtil {
   public static void replaceAliasesInAliasesMap(
-      Multimap<PathFragment, PathFragment> changeable) throws NinjaFileFormatException {
-    Set<PathFragment> copy = Sets.newHashSet(changeable.keys());
-    HashSet<PathFragment> set = Sets.newHashSet();
-    for (PathFragment path : copy) {
-      Collection<PathFragment> values = changeable.get(path);
-      Set<PathFragment> valuesCopy = Sets.newHashSet(values);
-      for (PathFragment value : valuesCopy) {
-        Collection<PathFragment> replacement = NinjaReplaceAliasesUtil
-            .replaceAliasesInAliasesMapRecursively(value, changeable, set);
-        if (replacement != null) {
-          values.remove(value);
-          values.addAll(replacement);
+      Multimap<PathFragment, PathFragment> changeable) {
+    Set<PathFragment> interestingAtAll = Sets.newHashSet();
+    for (PathFragment key : changeable.keys()) {
+      for (PathFragment inner : changeable.keys()) {
+        if (key.equals(inner)) {
+          continue;
         }
+        if (changeable.get(inner).contains(key)) {
+          interestingAtAll.add(inner);
+        }
+      }
+    }
+    Set<PathFragment> copy = Sets.newHashSet(changeable.keys());
+    for (PathFragment path : copy) {
+      for (PathFragment inner : interestingAtAll) {
+        replaceValue(path, changeable.get(inner), changeable.get(path));
       }
     }
   }
 
-  private static Collection<PathFragment> replaceAliasesInAliasesMapRecursively(
-      PathFragment value,
-      Multimap<PathFragment, PathFragment> changeable,
-      Set<PathFragment> requested) throws NinjaFileFormatException {
-    Collection<PathFragment> replacement = changeable.get(value);
-    if (replacement != null && !replacement.isEmpty()) {
-      List<PathFragment> copy = Lists.newArrayList(replacement);
-      for (PathFragment replacementFragment : copy) {
-        if (!requested.add(replacementFragment)) {
-          throw new NinjaFileFormatException("Cyclic usage of aliases: " +
-              replacementFragment.getPathString());
-        }
-
-        Collection<PathFragment> replaceWith =
-            replaceAliasesInAliasesMapRecursively(replacementFragment, changeable, requested);
-        if (replaceWith != null) {
-          replacement.remove(replacementFragment);
-          replacement.addAll(replaceWith);
-        }
-        requested.remove(replacementFragment);
-      }
-      return replacement;
+  private static void replaceValue(
+      PathFragment key,
+      Collection<PathFragment> fragments,
+      Collection<PathFragment> replacement) {
+    if (fragments.contains(key)) {
+      List<PathFragment> filteredReplacement = replacement.stream()
+          .filter(item -> !fragments.contains(item))
+          .collect(Collectors.toList());
+      while (fragments.remove(key));
+      fragments.addAll(filteredReplacement);
     }
-    return null;
   }
 }
