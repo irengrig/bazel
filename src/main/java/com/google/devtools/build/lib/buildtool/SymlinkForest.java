@@ -1,4 +1,4 @@
-// Copyright 2016 The Bazel Authors. All rights reserved.
+// Copyright 2019 The Bazel Authors. All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -11,6 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
 
 package com.google.devtools.build.lib.buildtool;
 
@@ -34,10 +35,8 @@ import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-/**
- * Creates a symlink forest based on a package path map.
- */
-class SymlinkForest {
+/** Creates a symlink forest based on a package path map. */
+public class SymlinkForest {
 
   private static final Logger logger = Logger.getLogger(SymlinkForest.class.getName());
   private static final boolean LOG_FINER = logger.isLoggable(Level.FINER);
@@ -47,7 +46,16 @@ class SymlinkForest {
   private final String productName;
   private final String prefix;
 
-  SymlinkForest(
+  /**
+   * Constructor for a symlink forest creator; does not perform any i/o.
+   *
+   * <p>Use {@link #plantSymlinkForest()} to actually create the symlink forest.
+   *
+   * @param packageRoots source package roots to which to create symlinks
+   * @param execroot path where to plant the symlink forest
+   * @param productName {@code BlazeRuntime#getProductName()}
+   */
+  public SymlinkForest(
       ImmutableMap<PackageIdentifier, Root> packageRoots, Path execroot, String productName) {
     this.packageRoots = packageRoots;
     this.execroot = execroot;
@@ -110,8 +118,10 @@ class SymlinkForest {
     for (Path target : mainRepoRoot.getDirectoryEntries()) {
       String baseName = target.getBaseName();
       Path execPath = execroot.getRelative(baseName);
-      // Create any links that don't start with bazel-.
-      if (!baseName.startsWith(prefix)) {
+      // Create any links that don't start with bazel-, and ignore external/ directory if
+      // user has it in the source tree because it conflicts with external repository location.
+      if (!baseName.startsWith(prefix)
+          && !baseName.equals(LabelConstants.EXTERNAL_PATH_PREFIX.getBaseName())) {
         execPath.createSymbolicLink(target);
       }
     }
@@ -253,7 +263,8 @@ class SymlinkForest {
     }
   }
 
-  void plantSymlinkForest() throws IOException {
+  /** Performs the filesystem operations to plant the symlink forest. */
+  public void plantSymlinkForest() throws IOException {
     deleteTreesBelowNotPrefixed(execroot, prefix);
 
     boolean shouldLinkAllTopLevelItems = false;
@@ -284,7 +295,13 @@ class SymlinkForest {
         if (pkgId.getPackageFragment().equals(PathFragment.EMPTY_FRAGMENT)) {
           shouldLinkAllTopLevelItems = true;
         } else {
-          Path execrootLink = execroot.getRelative(pkgId.getPackageFragment().getSegment(0));
+          String baseName = pkgId.getPackageFragment().getSegment(0);
+          // ignore external/ directory if user has it in the source tree
+          // because it conflicts with external repository location.
+          if (baseName.equals(LabelConstants.EXTERNAL_PATH_PREFIX.getBaseName())) {
+            continue;
+          }
+          Path execrootLink = execroot.getRelative(baseName);
           Path sourcePath = entry.getValue().getRelative(pkgId.getSourceRoot().getSegment(0));
           mainRepoLinks.putIfAbsent(execrootLink, sourcePath);
         }
@@ -308,6 +325,8 @@ class SymlinkForest {
     } else {
       plantSymlinkForestWithPartialMainRepository(mainRepoLinks);
     }
+
+    logger.info("Planted symlink forest in " + execroot);
   }
 
   private static PackageIdentifier createInRepo(
