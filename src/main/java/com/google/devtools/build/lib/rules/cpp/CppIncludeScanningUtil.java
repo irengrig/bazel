@@ -1,3 +1,18 @@
+// Copyright 2019 The Bazel Authors. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
 package com.google.devtools.build.lib.rules.cpp;
 
 import com.google.common.collect.ImmutableList;
@@ -18,6 +33,17 @@ public class CppIncludeScanningUtil {
     // Currently, this works together with the include_paths features because getCommandLine() will
     // get the system include paths from the {@code CcCompilationContext} instead.
     ImmutableList.Builder<PathFragment> result = ImmutableList.builder();
+    Iterator<String> iterator = compilerOptions.iterator();
+    while (iterator.hasNext()) {
+      String next = iterator.next();
+      String includeDir = readOptionValue(next, iterator, "-isystem");
+      if (includeDir == null) {
+        includeDir = readOptionValue(next, iterator, "-I");
+      }
+      if (includeDir != null) {
+        result.add(PathFragment.create(includeDir));
+      }
+    }
     for (int i = 0; i < compilerOptions.size(); i++) {
       String opt = compilerOptions.get(i);
       if (opt.startsWith("-isystem")) {
@@ -32,6 +58,21 @@ public class CppIncludeScanningUtil {
       }
     }
     return result.build();
+  }
+
+  private static String readOptionValue(String option, Iterator<String> iterator, String optionPrefix) {
+    if (!option.startsWith(optionPrefix)) {
+      return null;
+    }
+    int startLength = optionPrefix.length();
+    if (option.length() > startLength) {
+      return option.substring(startLength).trim();
+    } else if (iterator.hasNext()) {
+      return iterator.next();
+    } else {
+      System.err.println("WARNING: dangling " + optionPrefix + " flag in options.");
+      return null;
+    }
   }
 
   public static List<String> getCmdlineIncludes(List<String> args) {

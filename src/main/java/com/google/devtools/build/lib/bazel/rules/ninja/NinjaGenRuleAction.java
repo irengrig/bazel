@@ -30,7 +30,6 @@ import com.google.devtools.build.lib.actions.Artifact;
 import com.google.devtools.build.lib.actions.CommandLines;
 import com.google.devtools.build.lib.actions.ExecException;
 import com.google.devtools.build.lib.actions.RunfilesSupplier;
-import com.google.devtools.build.lib.includescanning.IncludeScannerSupplierImpl;
 import com.google.devtools.build.lib.rules.cpp.CppFileTypes;
 import com.google.devtools.build.lib.rules.cpp.CppIncludeScanningUtil;
 import com.google.devtools.build.lib.rules.cpp.IncludeScanner.IncludeScannerSupplier;
@@ -47,7 +46,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
@@ -126,6 +124,12 @@ public class NinjaGenRuleAction extends GenRuleAction {
       inputsCopy = ImmutableList.copyOf(inputs);
     }
 
+    Artifact mainSource = inputsCopy.stream()
+        .filter(input -> input.getExtension().equals("cpp")
+            || input.getExtension().equals("cxx")
+            || input.getExtension().equals("c"))
+        .findFirst().orElse(null);
+
     try {
       Set<Artifact> includes = Sets.newConcurrentHashSet();
       IncludeScanningHeaderData includeScanningHeaderData = new IncludeScanningHeaderData.Builder(
@@ -133,19 +137,34 @@ public class NinjaGenRuleAction extends GenRuleAction {
           .setSystemIncludeDirs(systemIncludeDirs)
           .setCmdlineIncludes(cmdlineIncludes)
           .build();
+      // todo clarify if to pass discovered include directories
+      // todo into both system and quote includes
+      ImmutableList<PathFragment> includePaths = ImmutableList.copyOf(systemIncludeDirs);
       ListenableFuture<?> listenableFuture = includeScannerSupplier
-          .scannerFor(Collections.emptyList(), ImmutableList.copyOf(systemIncludeDirs))
-          .processAsync(null, inputsCopy, includeScanningHeaderData,
+          .scannerFor(includePaths, includePaths)
+          .processAsync(mainSource, inputsCopy, includeScanningHeaderData,
               cmdlineIncludes, includes, this, actionExecutionContext, grepIncludes);
       ListenableFuture<Iterable<Artifact>> future = IncludeScanning
           .collectIncludes(listenableFuture, actionExecutionContext,
               includes, ImmutableList.of());
       Iterable<Artifact> artifacts = future.get();
+      artifacts = filterDiscoveredIncludes(inputsCopy, artifacts);
       updateInputs(artifacts);
       return artifacts;
     } catch (ExecutionException | IOException | ExecException e) {
       throw new ActionExecutionException(e, this, true);
     }
+  }
+
+  private Iterable<Artifact> filterDiscoveredIncludes(
+      ImmutableList<Artifact> inputsCopy,
+      Iterable<Artifact> artifacts) {
+    List<Artifact> filtered = Lists.newArrayList(artifacts);
+    filtered.removeAll(inputsCopy);
+    if (!filtered.isEmpty()) {
+      // System.out.println("DISCOVERED: " + filtered);
+    }
+    return filtered;
   }
 
   private synchronized String generateJsonInput(ActionExecutionContext actionExecutionContext)
@@ -169,7 +188,7 @@ public class NinjaGenRuleAction extends GenRuleAction {
 
   @Override
   protected void afterExecute(ActionExecutionContext actionExecutionContext) {
-    //checkInputPaths();
+    checkInputPaths();
     super.afterExecute(actionExecutionContext);
   }
 
@@ -178,7 +197,7 @@ public class NinjaGenRuleAction extends GenRuleAction {
       DependencySet dependencySet;
       try {
         byte[] bytes = Files.readAllBytes(depfilePath.getPathFile().toPath());
-        dependencySet = new DependencySet(workspaceRoot).process(bytes);
+        dependencySet = new DependencySet(workspaceRoot).process(bytes, true);
       } catch (IOException e) {
         throw new RuntimeException(e);
       }
@@ -191,9 +210,9 @@ public class NinjaGenRuleAction extends GenRuleAction {
       }
       for (Path dependency : dependencies) {
         if (!inputsPaths.contains(dependency) && !discoveredInputs.contains(dependency)) {
-          throw new RuntimeException(String.format(
-              "Missing actually used input: '%s' for building with command:\n'%s'",
-              dependency.getPathString(), rawCommandLine));
+          String message = String.format("Missing actually used input: ##'%s'##", dependency.getPathString());
+          System.out.println(message);
+          // throw new RuntimeException(message);
         }
       }
     }
