@@ -212,7 +212,7 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
           aliases, phonyArtifacts, generatedFiles);
 
       ThreadPoolExecutor slackPool = ExecutorUtil.newSlackPool(10, "Include scanner");
-      Path execRoot = directories.getExecRoot("");
+      Path execRoot = directories.getExecRoot(ruleContext.getConfiguration().getMainRepositoryName());
       try {
         Artifact grepIncludes = CppHelper.getGrepIncludes(ruleContext);
         IncludeScannerSupplierImpl includeScannerSupplier = new IncludeScannerSupplierImpl(
