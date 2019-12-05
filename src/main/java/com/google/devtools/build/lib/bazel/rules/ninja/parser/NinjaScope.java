@@ -22,13 +22,22 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableSortedMap;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import com.google.devtools.build.lib.bazel.rules.ninja.file.ByteFragmentAtOffset;
+import com.google.devtools.build.lib.bazel.rules.ninja.file.CollectingListFuture;
+import com.google.devtools.build.lib.bazel.rules.ninja.file.GenericParsingException;
+import com.google.devtools.build.lib.bazel.rules.ninja.lexer.NinjaLexer;
+import com.google.devtools.build.lib.bazel.rules.ninja.parser.NinjaFileParseResult.NinjaCallable;
+import com.google.devtools.build.lib.bazel.rules.ninja.parser.NinjaFileParseResult.NinjaPromise;
 import com.google.devtools.build.lib.util.Pair;
+import java.io.IOException;
+import java.util.ArrayDeque;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import javax.annotation.Nullable;
 
@@ -46,18 +55,21 @@ public class NinjaScope {
   private final NavigableMap<Integer, NinjaScope> subNinjaScopes;
   private Map<String, List<Pair<Integer, String>>> expandedVariables;
   private final Map<String, List<Pair<Integer, NinjaRule>>> rules;
+  private final NinjaScopeId ninjaScopeId;
 
   public NinjaScope() {
-    this(null, null);
+    this(null, null, NinjaScopeId.createNewScope());
   }
 
-  private NinjaScope(@Nullable NinjaScope parentScope, @Nullable Integer includePoint) {
+  private NinjaScope(@Nullable NinjaScope parentScope, @Nullable Integer includePoint,
+      NinjaScopeId ninjaScopeId) {
     this.parentScope = parentScope;
     this.includePoint = includePoint;
     this.rules = Maps.newTreeMap();
     this.includedScopes = Maps.newTreeMap();
     this.subNinjaScopes = Maps.newTreeMap();
     this.expandedVariables = Maps.newHashMap();
+    this.ninjaScopeId = ninjaScopeId;
   }
 
   public void setRules(Map<String, List<Pair<Integer, NinjaRule>>> rules) {
@@ -75,6 +87,10 @@ public class NinjaScope {
 
   public Collection<NinjaScope> getSubNinjaScopes() {
     return subNinjaScopes.values();
+  }
+
+  public NinjaScopeId getNinjaScopeId() {
+    return ninjaScopeId;
   }
 
   /**
@@ -98,13 +114,13 @@ public class NinjaScope {
   }
 
   public NinjaScope addIncluded(int offset) {
-    NinjaScope scope = new NinjaScope(this, offset);
+    NinjaScope scope = new NinjaScope(this, offset, ninjaScopeId.createChild());
     includedScopes.put(offset, scope);
     return scope;
   }
 
   public NinjaScope addSubNinja(int offset) {
-    NinjaScope scope = new NinjaScope(this, offset);
+    NinjaScope scope = new NinjaScope(this, offset, ninjaScopeId.createChild());
     subNinjaScopes.put(offset, scope);
     return scope;
   }
@@ -210,8 +226,19 @@ public class NinjaScope {
 
   public NinjaScope createTargetsScope(
       ImmutableSortedMap<String, List<Pair<Integer, String>>> expandedVariables) {
-    NinjaScope scope = new NinjaScope(this, Integer.MAX_VALUE);
+    NinjaScope scope = new NinjaScope(this, Integer.MAX_VALUE, ninjaScopeId.createChild());
     scope.expandedVariables.putAll(expandedVariables);
     return scope;
+  }
+
+  public void iterate(Consumer<NinjaScope> consumer) {
+    ArrayDeque<NinjaScope> queue = new ArrayDeque<>();
+    queue.add(this);
+    while (!queue.isEmpty()) {
+      NinjaScope currentScope = queue.removeFirst();
+      consumer.accept(currentScope);
+      queue.addAll(currentScope.getIncludedScopes());
+      queue.addAll(currentScope.getSubNinjaScopes());
+    }
   }
 }

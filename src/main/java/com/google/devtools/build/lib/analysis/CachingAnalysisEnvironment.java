@@ -1,4 +1,4 @@
-// Copyright 2014 The Bazel Authors. All rights reserved.
+// Copyright 2019 The Bazel Authors. All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -11,6 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
 package com.google.devtools.build.lib.analysis;
 
 import com.google.common.base.Joiner;
@@ -22,6 +23,7 @@ import com.google.devtools.build.lib.actions.ActionAnalysisMetadata;
 import com.google.devtools.build.lib.actions.ActionKeyContext;
 import com.google.devtools.build.lib.actions.ActionLookupValue;
 import com.google.devtools.build.lib.actions.Artifact;
+import com.google.devtools.build.lib.actions.Artifact.SourceArtifact;
 import com.google.devtools.build.lib.actions.Artifact.SpecialArtifact;
 import com.google.devtools.build.lib.actions.ArtifactFactory;
 import com.google.devtools.build.lib.actions.ArtifactRoot;
@@ -38,6 +40,7 @@ import com.google.devtools.build.lib.skyframe.WorkspaceStatusValue;
 import com.google.devtools.build.lib.syntax.StarlarkSemantics;
 import com.google.devtools.build.lib.util.Pair;
 import com.google.devtools.build.lib.vfs.PathFragment;
+import com.google.devtools.build.lib.vfs.Root;
 import com.google.devtools.build.skyframe.SkyFunction;
 import java.io.PrintWriter;
 import java.io.StringWriter;
@@ -244,6 +247,11 @@ public class CachingAnalysisEnvironment implements AnalysisEnvironment {
     }
     Preconditions.checkState(enabled);
     return ((StoredEventHandler) errorEventListener).hasErrors();
+  }
+
+  @Override
+  public SourceArtifact getSourceArtifact(PathFragment execPath, Root root) {
+    return artifactFactory.getSourceArtifact(execPath, root);
   }
 
   @Override

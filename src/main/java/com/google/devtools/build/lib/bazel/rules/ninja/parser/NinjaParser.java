@@ -54,6 +54,9 @@ public class NinjaParser implements DeclarationConsumer {
       throw new IllegalStateException("Empty fragment passed as declaration.");
     }
     NinjaToken token = lexer.nextToken();
+    while (lexer.hasNextToken() && NinjaToken.NEWLINE.equals(token)) {
+      token = lexer.nextToken();
+    }
     int declarationStart = offset + lexer.getLastStart();
     lexer.undo();
 
@@ -88,10 +91,11 @@ public class NinjaParser implements DeclarationConsumer {
         break;
       case DEFAULT:
       case POOL:
+      case NEWLINE:
         // Do nothing.
         break;
       default:
-        throw new UnsupportedOperationException("To be implemented.");
+        throw new UnsupportedOperationException("Unknown type of Ninja token.");
     }
   }
 }
