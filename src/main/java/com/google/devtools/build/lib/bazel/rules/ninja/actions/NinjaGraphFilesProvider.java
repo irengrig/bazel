@@ -17,20 +17,26 @@ package com.google.devtools.build.lib.bazel.rules.ninja.actions;
 
 import com.google.devtools.build.lib.analysis.TransitiveInfoProvider;
 import com.google.devtools.build.lib.cmdline.Label;
+import com.google.devtools.build.lib.vfs.PathFragment;
 import java.util.Collection;
+import java.util.Set;
 
 public class NinjaGraphFilesProvider implements TransitiveInfoProvider {
   private final Label main;
   private final Collection<Label> children;
+  private final String buildRoot;
   private final String outputRoot;
+  private final Set<PathFragment> preExisting;
 
   public NinjaGraphFilesProvider(
       Label main,
       Collection<Label> children,
-      String outputRoot) {
+      String buildRoot, String outputRoot, Set<PathFragment> preExisting) {
     this.main = main;
     this.children = children;
+    this.buildRoot = buildRoot;
     this.outputRoot = outputRoot;
+    this.preExisting = preExisting;
   }
 
   public Label getMain() {
@@ -41,7 +47,15 @@ public class NinjaGraphFilesProvider implements TransitiveInfoProvider {
     return children;
   }
 
+  public String getBuildRoot() {
+    return buildRoot;
+  }
+
   public String getOutputRoot() {
     return outputRoot;
+  }
+
+  public Set<PathFragment> getPreExisting() {
+    return preExisting;
   }
 }

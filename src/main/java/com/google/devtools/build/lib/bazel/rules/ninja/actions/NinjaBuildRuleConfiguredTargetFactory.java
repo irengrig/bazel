@@ -57,6 +57,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 
 public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTargetFactory {
   @Override
@@ -78,9 +79,18 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
     // todo move to provider?
     ImmutableSortedSet<PathFragment> phonyTargets = getPhonyTargets(graphProvider.getTargets());
     // todo maybe just pass graph provider?
+    PathFragment mainPrefix = graphFilesProvider.getMain().toPathFragment()
+        .getParentDirectory();
+    PathFragment oldMainPrefix = mainPrefix;
+    PathFragment buildRoot = PathFragment.create(graphFilesProvider.getBuildRoot());
+    PathFragment outputRoot = PathFragment.create(graphFilesProvider.getOutputRoot());
+    if (!buildRoot.isEmpty() && mainPrefix.startsWith(buildRoot)) {
+      PathFragment relative = mainPrefix.relativeTo(buildRoot);
+      mainPrefix = outputRoot.getRelative(relative);
+    }
     ActionCreator actionCreator = new ActionCreator(ruleContext, graphProvider.getScope(),
-        PathFragment.create(graphFilesProvider.getOutputRoot()), graphProvider.getRepositoryName(), phonyTargets,
-        graphProvider.getTargets(), targetPaths);
+        outputRoot, graphProvider.getRepositoryName(), phonyTargets,
+        graphProvider.getTargets(), targetPaths, mainPrefix, oldMainPrefix);
     reduce(graphProvider.getTargets(), targetPaths, actionCreator::createAction);
 
     // todo later
@@ -123,6 +133,8 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
     private final ImmutableSortedSet<PathFragment> phonyTargets;
     private final ImmutableSortedMap<PathFragment, NinjaTarget> targets;
     private final List<PathFragment> directlyRequestedTargets;
+    private final PathFragment mainPrefix;
+    private final PathFragment oldMainPrefix;
     private final List<Artifact> directlyRequestedArtifacts;
     private final Path execRoot;
     private final ArtifactRoot outputRoot;
@@ -137,13 +149,16 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
         RepositoryName repositoryName,
         ImmutableSortedSet<PathFragment> phonyTargets,
         ImmutableSortedMap<PathFragment, NinjaTarget> targets,
-        List<PathFragment> directlyRequestedTargets) {
+        List<PathFragment> directlyRequestedTargets,
+        PathFragment mainPrefix, PathFragment oldMainPrefix) {
       this.ruleContext = ruleContext;
       this.outputRootPath = outputRootPath;
       this.repositoryName = repositoryName;
       this.phonyTargets = phonyTargets;
       this.targets = targets;
       this.directlyRequestedTargets = directlyRequestedTargets;
+      this.mainPrefix = mainPrefix;
+      this.oldMainPrefix = oldMainPrefix;
       this.directlyRequestedArtifacts = Lists.newArrayList();
       ImmutableSortedMap.Builder<NinjaScopeId, NinjaScope> builder =
           ImmutableSortedMap.naturalOrder();
@@ -275,14 +290,29 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
           if (phonyTargets.contains(input)) {
             queue.add(input);
           } else {
-            inputsBuilder.add(getInputArtifact(input, inputPathFragments));
+            Artifact inputArtifact = getInputArtifact(input, inputPathFragments);
+            if (inputArtifact != null) {
+              inputsBuilder.add(inputArtifact);
+            }
           }
         }
       }
     }
 
+    @Nullable
     private Artifact getInputArtifact(PathFragment input,
         List<PathFragment> inputPathFragments) {
+      PathFragment inputUnderOldPrefix = oldMainPrefix.getRelative(input);
+      input = mainPrefix.getRelative(input);
+
+      Path fsPath = root.getRelative(inputUnderOldPrefix);
+      if (fsPath.exists() && fsPath.isDirectory()) {
+        return null;
+        // inputPathFragments.add(inputUnderOldPrefix);
+        // return ruleContext.getAnalysisEnvironment().getSourceArtifact(inputUnderOldPrefix, root);
+        // return ruleContext.getTreeArtifact(inputUnderOldPrefix, ArtifactRoot.asSourceRoot(root));// todo ???
+      }
+
       inputPathFragments.add(input);
       if (input.startsWith(outputRootPath)) {
         // output of other action
@@ -299,10 +329,14 @@ public class NinjaBuildRuleConfiguredTargetFactory implements RuleConfiguredTarg
         if (phonyTargets.contains(input)) {
           fillPhonyInputs(input, inputsBuilder, inputPathFragments);
         } else {
-          inputsBuilder.add(getInputArtifact(input, inputPathFragments));
+          Artifact inputArtifact = getInputArtifact(input, inputPathFragments);
+          if (inputArtifact != null) {
+            inputsBuilder.add(inputArtifact);
+          }
         }
       }
       for (PathFragment output : target.getAllOutputs()) {
+        output = mainPrefix.getRelative(output);
         DerivedArtifact derivedArtifact =
             ruleContext.getDerivedArtifact(output.relativeTo(outputRootPath), outputRoot);
         outputsBuilder.add(derivedArtifact);
